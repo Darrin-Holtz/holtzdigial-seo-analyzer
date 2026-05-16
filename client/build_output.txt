@@ -1,0 +1,55 @@
+
+> client@0.0.0 build
+> tsc -b && vite build
+
+src/assets/gemini-assets.ts(2,7): error TS6133: 'seoAnalysisSchema' is declared but its value is never read.
+src/assets/gemini-assets.ts(3,11): error TS2304: Cannot find name 'Type'.
+src/assets/gemini-assets.ts(5,31): error TS2304: Cannot find name 'Type'.
+src/assets/gemini-assets.ts(7,19): error TS2304: Cannot find name 'Type'.
+src/assets/gemini-assets.ts(9,30): error TS2304: Cannot find name 'Type'.
+src/assets/gemini-assets.ts(10,38): error TS2304: Cannot find name 'Type'.
+src/assets/gemini-assets.ts(11,40): error TS2304: Cannot find name 'Type'.
+src/assets/gemini-assets.ts(12,40): error TS2304: Cannot find name 'Type'.
+src/assets/gemini-assets.ts(17,19): error TS2304: Cannot find name 'Type'.
+src/assets/gemini-assets.ts(19,23): error TS2304: Cannot find name 'Type'.
+src/assets/gemini-assets.ts(21,35): error TS2304: Cannot find name 'Type'.
+src/assets/gemini-assets.ts(22,36): error TS2304: Cannot find name 'Type'.
+src/assets/gemini-assets.ts(23,38): error TS2304: Cannot find name 'Type'.
+src/assets/gemini-assets.ts(29,19): error TS2304: Cannot find name 'Type'.
+src/assets/gemini-assets.ts(31,23): error TS2304: Cannot find name 'Type'.
+src/assets/gemini-assets.ts(34,31): error TS2304: Cannot find name 'Type'.
+src/assets/gemini-assets.ts(39,39): error TS2304: Cannot find name 'Type'.
+src/assets/gemini-assets.ts(40,38): error TS2304: Cannot find name 'Type'.
+src/assets/gemini-assets.ts(41,45): error TS2304: Cannot find name 'Type'.
+src/assets/gemini-assets.ts(52,7): error TS6133: 'prompt' is declared but its value is never read.
+src/assets/gemini-assets.ts(54,16): error TS2304: Cannot find name 'scrapedData'.
+src/assets/gemini-assets.ts(55,14): error TS2304: Cannot find name 'scrapedData'.
+src/assets/gemini-assets.ts(56,16): error TS2304: Cannot find name 'scrapedData'.
+src/assets/gemini-assets.ts(57,25): error TS2304: Cannot find name 'scrapedData'.
+src/assets/gemini-assets.ts(58,15): error TS2304: Cannot find name 'scrapedData'.
+src/assets/gemini-assets.ts(61,13): error TS2304: Cannot find name 'scrapedData'.
+src/assets/gemini-assets.ts(61,45): error TS2304: Cannot find name 'scrapedData'.
+src/assets/gemini-assets.ts(62,19): error TS2304: Cannot find name 'scrapedData'.
+src/assets/gemini-assets.ts(62,57): error TS2304: Cannot find name 'scrapedData'.
+src/assets/gemini-assets.ts(63,17): error TS2304: Cannot find name 'scrapedData'.
+src/assets/gemini-assets.ts(64,14): error TS2304: Cannot find name 'scrapedData'.
+src/assets/gemini-assets.ts(65,16): error TS2304: Cannot find name 'scrapedData'.
+src/assets/gemini-assets.ts(66,22): error TS2304: Cannot find name 'scrapedData'.
+src/assets/gemini-assets.ts(67,16): error TS2304: Cannot find name 'scrapedData'.
+src/assets/gemini-assets.ts(68,20): error TS2304: Cannot find name 'scrapedData'.
+src/assets/gemini-assets.ts(69,16): error TS2304: Cannot find name 'scrapedData'.
+src/assets/gemini-assets.ts(70,15): error TS2304: Cannot find name 'scrapedData'.
+src/assets/gemini-assets.ts(73,9): error TS2304: Cannot find name 'scrapedData'.
+src/assets/gemini-assets.ts(73,59): error TS2304: Cannot find name 'scrapedData'.
+src/assets/gemini-assets.ts(74,9): error TS2304: Cannot find name 'scrapedData'.
+src/assets/gemini-assets.ts(75,9): error TS2304: Cannot find name 'scrapedData'.
+src/assets/gemini-assets.ts(76,9): error TS2304: Cannot find name 'scrapedData'.
+src/assets/gemini-assets.ts(77,9): error TS2304: Cannot find name 'scrapedData'.
+src/assets/gemini-assets.ts(78,9): error TS2304: Cannot find name 'scrapedData'.
+src/assets/gemini-assets.ts(81,15): error TS2304: Cannot find name 'scrapedData'.
+src/assets/gemini-assets.ts(82,15): error TS2304: Cannot find name 'scrapedData'.
+src/assets/gemini-assets.ts(83,12): error TS2304: Cannot find name 'scrapedData'.
+src/assets/gemini-assets.ts(86,12): error TS2304: Cannot find name 'scrapedData'.
+src/assets/gemini-assets.ts(87,23): error TS2304: Cannot find name 'scrapedData'.
+src/assets/gemini-assets.ts(88,20): error TS2304: Cannot find name 'scrapedData'.
+src/assets/gemini-assets.ts(91,3): error TS2304: Cannot find name 'scrapedData'.
