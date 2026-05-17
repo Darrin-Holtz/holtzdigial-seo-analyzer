@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { SearchIcon, ArrowRightIcon, BarChart3Icon, GlobeIcon, TrendingUpIcon } from "lucide-react";
 import AnalysesCard from "../components/AnalysesCard";
-import { dummyAnalysisData } from "../assets/assets";
+import { useApp } from "../context/AppContext";
 
 interface AnalysisSummary {
     _id: string;
@@ -19,17 +19,21 @@ interface AnalysisSummary {
 }
 
 export default function Dashboard() {
-    const user = { name: "John Doe", plan: "free", analysisCount: 2 };
+    const { user, api } = useApp();
     const navigate = useNavigate();
     const [url, setUrl] = useState("");
     const [analyses, setAnalyses] = useState<AnalysisSummary[]>([]);
     const [loading, setLoading] = useState(true);
 
     const fetchRecent = async () => {
-        setTimeout(() => {
-            setAnalyses(dummyAnalysisData);
+        try {
+            const res = await api.get("/api/analysis/list?limit=6");
+            setAnalyses(res.data.analyses);
+        } catch (err) {
+            console.error("Failed to fetch recent analyses:", err);
+        } finally {
             setLoading(false);
-        }, 1000);
+        }
     };
 
     const handleAnalyze = (e: React.SubmitEvent) => {

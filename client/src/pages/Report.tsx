@@ -3,7 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import ScoreGauge from "../components/ScoreGauge";
 import IssueCard from "../components/IssueCard";
 import { ArrowLeft, Globe, Clock, FileText, Image, Link2, Heading, Tag, AlertCircle, ExternalLink, Type, Search } from "lucide-react";
-import { dummyWebsiteAnalysis } from "../assets/assets";
+import { useApp } from "../context/AppContext";
 
 interface AnalysisData {
     _id: string;
@@ -56,17 +56,31 @@ interface AnalysisData {
 }
 
 export default function Report() {
+    const {api} = useApp();
     const { id } = useParams();
     const [analysis, setAnalysis] = useState<AnalysisData | null>(null);
     const [loading, setLoading] = useState(true);
-    const [error] = useState("");
+    const [error, setError] = useState("");
     const [activeTab, setActiveTab] = useState("overview");
 
     const fetchAnalysis = async () => {
-        setTimeout(() => {
-            setAnalysis(dummyWebsiteAnalysis);
+        try {
+            const res = await api.get(`/api/analysis/${id}`);
+            if (res.data.success) {
+                if (res.data.analysis.status === "processing") {
+                    // Poll for completion
+                    setTimeout(fetchAnalysis, 2000);
+                    return;
+                }
+                setAnalysis(res.data.analysis);
+            } else {
+                setError(res.data.message || "Failed to fetch analysis.");
+            }
+        } catch (err: any) {
+            setError(err.response?.data?.message || err.message || "Failed to fetch analysis.");
+        } finally {
             setLoading(false);
-        }, 1500);
+        }
     };
 
     const getScoreClass = (s: number) => {
