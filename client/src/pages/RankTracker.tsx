@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { Target, Plus, RefreshCw, Trash2, TrendingUp, TrendingDown, Minus, ExternalLink, Clock, Loader2, X, Search, Globe, AlertCircle, Eye, EyeOff, Filter, ArrowUpDown } from "lucide-react";
-import { dummyRankings } from "../assets/assets";
+import { useApp } from "../context/AppContext";
 
 interface KeywordItem {
     _id: string;
@@ -20,6 +20,7 @@ interface KeywordItem {
 }
 
 export default function RankTracker() {
+    const { api } = useApp();
     const [keywords, setKeywords] = useState<KeywordItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [showAddModal, setShowAddModal] = useState(false);
@@ -32,40 +33,122 @@ export default function RankTracker() {
     const [searchQuery, setSearchQuery] = useState("");
     const [statusFilter, setStatusFilter] = useState("all");
     const [sortBy, setSortBy] = useState("newest");
+    const pollIntervalsRef = useRef<ReturnType<typeof setInterval>[]>([]);
 
     const fetchKeywords = async () => {
-        setTimeout(() => {
-            setKeywords(dummyRankings);
+        try {
+            const res = await api.get("/api/rank/list");
+            if (res.data.success) {
+                setKeywords(res.data.keywords);
+            } else {
+                console.error("Failed to fetch keywords:", res.data.message);
+            }
+        } catch (err) {
+            console.error("Failed to fetch keywords:", err);
+        } finally {
             setLoading(false);
-        }, 1000);
+        }
     };
 
     const handleAdd = async (e: React.SubmitEvent) => {
         e.preventDefault();
+        if (!newKeyword.trim() || !newUrl.trim()) return;
         setAdding(true);
-        setTimeout(() => {
-            setShowAddModal(false);
+        setAddError("");
+        
+        try {
+            const res = await api.post("/api/rank/add", { keyword: newKeyword.trim(), url: newUrl.trim() });
+            if (res.data.success) {
+                setKeywords((prev) => [res.data.tracking, ...prev]);                
+                setNewKeyword("");
+                setNewUrl("");
+                setShowAddModal(false);
+
+                // Poll for completion
+                const id = res.data.tracking._id;
+                let pollRetries = 0;
+                const pollInterval = setInterval(async () => {
+                    try {
+                        const check = await api.get(`/api/rank/${id}`);
+                        pollRetries = 0;
+                        if (check.data.tracking.status !== "checking") {
+                            clearInterval(pollInterval);
+                            pollIntervalsRef.current = pollIntervalsRef.current.filter((t) => t !== pollInterval);
+                            setKeywords((prev) => prev.map((k) => (k._id === id ? check.data.tracking : k)));
+                        }
+                    } catch (error: any) {
+                        console.error("Failed to fetch tracking status:", error);
+                        if (++pollRetries >= 5) {
+                            clearInterval(pollInterval);
+                            pollIntervalsRef.current = pollIntervalsRef.current.filter((t) => t !== pollInterval);
+                        }
+                    }
+                }, 3000);
+                pollIntervalsRef.current.push(pollInterval);
+            } 
+        } catch (err: any) {
+            setAddError("An error occurred while adding the keyword.");
+        } finally {
             setAdding(false);
-        }, 1000);
+        }
     };
 
     const handleRefresh = async (id: string) => {
         setRefreshing(id);
-        setTimeout(() => {
+        try {
+            await api.post(`/api/rank/${id}/refresh`);
+            // Update status to checking
+            setKeywords((prev) => prev.map((k) => (k._id === id ? { ...k, status: "checking" } : k)));
+            // Poll for completion
+            let refreshRetries = 0;
+            const pollInterval = setInterval(async () => {
+                try {
+                    const check = await api.get(`/api/rank/${id}`);
+                    refreshRetries = 0;
+                    if (check.data.tracking.status !== "checking") {
+                        clearInterval(pollInterval);
+                        pollIntervalsRef.current = pollIntervalsRef.current.filter((t) => t !== pollInterval);
+                        setKeywords((prev) => prev.map((k) => (k._id === id ? check.data.tracking : k)));
+                        setRefreshing(null);
+                    }
+                } catch (error: any) {
+                    console.error("Failed to fetch tracking status:", error);
+                    if (++refreshRetries >= 5) {
+                        clearInterval(pollInterval);
+                        pollIntervalsRef.current = pollIntervalsRef.current.filter((t) => t !== pollInterval);
+                        setRefreshing(null);
+                    }
+                }
+            }, 3000);
+            pollIntervalsRef.current.push(pollInterval);
+        } catch (err) {
+            console.error("Failed to refresh ranking:", err);
             setRefreshing(null);
-        }, 1000);
+        } 
     };
 
     const handleDelete = async (id: string) => {
         if (!confirm("Delete this keyword tracking?")) return;
         setDeleting(id);
-        setTimeout(() => {
+        try {
+            await api.delete(`/api/rank/${id}`);
+            setKeywords((prev) => prev.filter((k) => k._id !== id));
+        } catch (err) {
+            console.error("Failed to delete keyword:", err);
+        } finally {
             setDeleting(null);
-        }, 1000);
+        }
     };
 
     const handleToggle = async (id: string) => {
-        console.log(id);
+        try {
+            const res =await api.put(`/api/rank/${id}/toggle`);
+            if (res.data.success) {
+                setKeywords((prev) => prev.map((k) => (k._id === id ? { ...k, active: res.data.tracking.active } : k)));
+            }
+        } catch (err) {
+            console.error("Failed to toggle tracking:", err);
+        }   
     };
 
     const getPositionBadge = (pos: number | null) => {
@@ -111,6 +194,9 @@ export default function RankTracker() {
 
     useEffect(() => {
         (async () => await fetchKeywords())();
+        return () => {
+            pollIntervalsRef.current.forEach(clearInterval);
+        };
     }, []);
 
     return (
