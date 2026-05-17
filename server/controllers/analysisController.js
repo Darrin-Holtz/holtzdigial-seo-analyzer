@@ -31,7 +31,8 @@ export const analyzeUrl = async (req, res) => {
             // Step 1: Scrape the URL with BrowserBase
             const scrapeResult = await scrapeUrl(validUrl.href);
             
-            if (!scrapeResult.success) {
+            if (!scrapeResult || !scrapeResult.success) {
+                console.error("[ANALYSIS] Scrape failed:", scrapeResult?.error);
                 analysis.status = 'failed';
                 await analysis.save();
                 return;
@@ -41,6 +42,7 @@ export const analyzeUrl = async (req, res) => {
             const aiResult = await analyzeSeoData(scrapeResult.data);
 
             if (!aiResult.success) {
+                console.error("[ANALYSIS] AI failed:", aiResult.error);
                 analysis.status = 'failed';
                 await analysis.save();
                 return;

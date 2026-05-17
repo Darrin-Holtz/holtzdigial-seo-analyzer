@@ -81,16 +81,18 @@ export async function scrapeUrl(url) {
             const pageSize =  document.documentElement.outerHTML.length;
 
             return {
-                title,
-                description,
-                canonical,
-                robots,
-                ogTitle,
-                ogDescription,
-                ogImage,
-                twitterCard,
-                viewport,
-                charset,
+                metaData: {
+                    title,
+                    description,
+                    canonical,
+                    robots,
+                    ogTitle,
+                    ogDescription,
+                    ogImage,
+                    twitterCard,
+                    viewport,
+                    charset,
+                },
                 headings,
                 links: {
                     internal: internalLinks,
@@ -121,5 +123,6 @@ export async function scrapeUrl(url) {
                 console.error("[SCRAPER] Failed to close browser:", error.message);
             }
         }
+        return { success: false, error: error.message };
     }
 }
