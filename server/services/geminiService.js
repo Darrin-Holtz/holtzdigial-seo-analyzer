@@ -1,4 +1,3 @@
-import { response } from 'express';
 import {GoogleGenAI, Type} from '@google/genai';
 
 const ai = new GoogleGenAI({
@@ -99,7 +98,7 @@ export async function analyzeSeoData(scrapedData) {
 
         Scoring guidelines:
         - Title: 50-60 chars optimal, must exist
-        - Description: 150-160 chars optimal, must exist
+        - Description: 120-160 chars is acceptable; only flag as an issue if missing entirely or under 50 chars or over 200 chars
         - H1: exactly 1 is ideal
         - Images: all should have alt text
         - Load time: <3s good, <5s ok, >5s poor

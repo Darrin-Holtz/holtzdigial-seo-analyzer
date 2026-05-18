@@ -21,6 +21,8 @@ interface AnalysisItem {
 export default function History() {
     const {api} = useApp();
     const [analyses, setAnalyses] = useState<AnalysisItem[]>([]);
+
+    useEffect(() => { document.title = "Analysis History — Rank Pilot"; }, []);
     const [loading, setLoading] = useState(true);
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);

@@ -5,6 +5,65 @@ const bb = new Browserbase({
   apiKey: process.env.BROWSERBASE_API_KEY,
 });
 
+// Probe a set of internal URLs (HEAD request) to detect broken links.
+// Runs at most MAX_LINK_CHECKS checks with capped concurrency to stay fast.
+const MAX_LINK_CHECKS = 20;
+const LINK_CHECK_CONCURRENCY = 5;
+
+async function checkBrokenLinks(internalUrls) {
+    const sample = internalUrls.slice(0, MAX_LINK_CHECKS);
+    let brokenCount = 0;
+
+    for (let i = 0; i < sample.length; i += LINK_CHECK_CONCURRENCY) {
+        const batch = sample.slice(i, i + LINK_CHECK_CONCURRENCY);
+        const results = await Promise.allSettled(
+            batch.map((href) =>
+                fetch(href, { method: 'HEAD', signal: AbortSignal.timeout(5000), redirect: 'follow' })
+                    .then((r) => r.status)
+                    .catch(() => 0)
+            )
+        );
+        for (const r of results) {
+            const status = r.status === 'fulfilled' ? r.value : 0;
+            if (status === 0 || status >= 400) brokenCount++;
+        }
+    }
+    return brokenCount;
+}
+
+// Fetch robots.txt and detect sitemap references
+async function fetchRobotsTxt(origin) {
+    try {
+        const res = await fetch(`${origin}/robots.txt`, { signal: AbortSignal.timeout(5000) });
+        if (!res.ok) return { exists: false, allowsCrawling: true, sitemapUrl: null, raw: '' };
+        const raw = await res.text();
+        const lines = raw.split('\n').map((l) => l.trim().toLowerCase());
+        // Walk through the User-agent: * block tracking Allow/Disallow rules
+        let inStarAgent = false;
+        let disallowsAll = false;
+        let allowsRoot = false;
+        for (const line of lines) {
+            if (line.startsWith('user-agent:')) {
+                inStarAgent = line.replace('user-agent:', '').trim() === '*';
+                continue;
+            }
+            if (!inStarAgent) continue;
+            if (line === 'allow: /' || line === 'allow:/') allowsRoot = true;
+            if (line === 'disallow: /' || line === 'disallow:/') disallowsAll = true;
+        }
+        // Blocked only if Disallow: / exists with no Allow: / to override it
+        const sitemapMatch = raw.match(/^Sitemap:\s*(\S+)/im);
+        return {
+            exists: true,
+            allowsCrawling: !(disallowsAll && !allowsRoot),
+            sitemapUrl: sitemapMatch ? sitemapMatch[1] : null,
+            raw: raw.substring(0, 500),
+        };
+    } catch {
+        return { exists: false, allowsCrawling: true, sitemapUrl: null, raw: '' };
+    }
+}
+
 export async function scrapeUrl(url) {
     let browser;
     try {
@@ -58,27 +117,48 @@ export async function scrapeUrl(url) {
             };
             const allLinks = Array.from(document.querySelectorAll('a[href]'));
             const currentHost = window.location.hostname;
+            const currentOrigin = window.location.origin;
             let internalLinks = 0;
             let externalLinks = 0;
+            const internalHrefs = [];
             allLinks.forEach((link) => {
                 try {
                     const href = link.href;
-                    if(href.startsWith('mailto:') || href.startsWith('tel:')) return; // Skip mailto and tel links
+                    if(href.startsWith('mailto:') || href.startsWith('tel:') || href.startsWith('javascript:')) return;
                     const linkUrl = new URL(href);
                     if (linkUrl.hostname === currentHost) {
                         internalLinks++;
+                        internalHrefs.push(href);
                     } else {
                         externalLinks++;
                     }
-                } catch {
-
-                }
+                } catch { /* ignore unparseable hrefs */ }
             });
             const allImages = Array.from(document.querySelectorAll('img'));
             const missingAlt = allImages.filter((img) => !img.alt || img.alt.trim() === '').length;
             const bodyText = document.body?.innerText || '';
             const wordCount = bodyText.split(/\s+/).filter(w => w.length > 0).length;
-            const pageSize =  document.documentElement.outerHTML.length;
+            const pageSize = document.documentElement.outerHTML.length;
+
+            // Structured data (JSON-LD) — flatten @graph arrays
+            const structuredData = Array.from(document.querySelectorAll('script[type="application/ld+json"]'))
+                .flatMap((s) => {
+                    try {
+                        const parsed = JSON.parse(s.textContent || '');
+                        if (parsed['@graph'] && Array.isArray(parsed['@graph'])) {
+                            return parsed['@graph'].map((item) => ({
+                                '@context': parsed['@context'] || 'https://schema.org',
+                                ...item,
+                            }));
+                        }
+                        return [parsed];
+                    } catch { return []; }
+                })
+                .filter(Boolean);
+
+            // Sitemap link tag
+            const sitemapLink = document.querySelector('link[rel="sitemap"]');
+            const sitemapHref = sitemapLink ? sitemapLink.getAttribute('href') || null : null;
 
             return {
                 metaData: {
@@ -98,6 +178,7 @@ export async function scrapeUrl(url) {
                     internal: internalLinks,
                     external: externalLinks,
                     total: allLinks.length,
+                    internalHrefs: internalHrefs.slice(0, 20), // pass to server for broken-link checking
                 },
                 images: {
                     total: allImages.length,
@@ -106,21 +187,140 @@ export async function scrapeUrl(url) {
                 },
                 wordCount,
                 pageSize,
+                structuredData,
+                sitemapLinkTag: sitemapHref,
+                currentOrigin,
                 bodyText: bodyText.substring(0, 3000), // Limit body text to first 3k characters to avoid huge payloads
             };
-        })
+        });
+
+        // ── Core Web Vitals (measured while page is still open) ──────────────
+        const cwv = await page.evaluate(() => {
+            const result = { fcp: null, lcp: null, cls: null, ttfb: null };
+
+            // TTFB from navigation timing
+            const navEntry = performance.getEntriesByType('navigation')[0];
+            if (navEntry) result.ttfb = Math.round(navEntry.responseStart - navEntry.requestStart);
+
+            // FCP from paint timing
+            const paintEntries = performance.getEntriesByType('paint');
+            const fcp = paintEntries.find((e) => e.name === 'first-contentful-paint');
+            if (fcp) result.fcp = Math.round(fcp.startTime);
+
+            // LCP — read buffered entries directly (no observer needed after load)
+            const lcpEntries = performance.getEntriesByType('largest-contentful-paint');
+            if (lcpEntries.length > 0) {
+                result.lcp = Math.round(lcpEntries[lcpEntries.length - 1].startTime);
+            }
+
+            // CLS — aggregate all layout-shift entries
+            const layoutShifts = performance.getEntriesByType('layout-shift');
+            let clsValue = 0;
+            for (const entry of layoutShifts) {
+                if (!entry.hadRecentInput) clsValue += entry.value ?? 0;
+            }
+            result.cls = Math.round(clsValue * 1000) / 1000;
+
+            return result;
+        }).catch(() => ({ fcp: null, lcp: null, cls: null, ttfb: null }));
+
+        // ── Mobile Friendliness Check (new context, same session) ────────────
+        let mobileFriendliness = { isMobileFriendly: false, issues: [] };
+        try {
+            const mobileContext = await browser.newContext({
+                viewport: { width: 375, height: 667 },
+                userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+            });
+            const mobilePage = await mobileContext.newPage();
+            mobilePage.setDefaultNavigationTimeout(20000);
+            try {
+                await mobilePage.goto(url, { waitUntil: 'domcontentloaded' });
+                await mobilePage.waitForTimeout(1000);
+                mobileFriendliness = await mobilePage.evaluate(() => {
+                    const criticalIssues = [];
+                    const advisoryIssues = [];
+                    const vw = window.innerWidth;
+
+                    // CRITICAL: Missing viewport meta tag
+                    const vpMeta = document.querySelector('meta[name="viewport"]');
+                    if (!vpMeta) criticalIssues.push('Missing viewport meta tag');
+
+                    // CRITICAL: Horizontal overflow (causes horizontal scroll)
+                    // Only flag if overflow-x is NOT hidden/clip on html or body (those suppress visible scroll)
+                    const htmlOverflow = window.getComputedStyle(document.documentElement).overflowX;
+                    const bodyOverflow = window.getComputedStyle(document.body).overflowX;
+                    const overflowSuppressed = ['hidden', 'clip'].includes(htmlOverflow) || ['hidden', 'clip'].includes(bodyOverflow);
+                    const bodyWidth = document.documentElement.scrollWidth;
+                    if (!overflowSuppressed && bodyWidth > vw + 5) criticalIssues.push(`Page wider than viewport (${bodyWidth}px > ${vw}px) — causes horizontal scroll`);
+
+                    // ADVISORY: Tap target sizes — only flag if more than 10% of targets are too small
+                    const tapTargets = Array.from(document.querySelectorAll('a, button, input, select'))
+                        .filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; });
+                    const smallTargets = tapTargets.filter((el) => {
+                        const r = el.getBoundingClientRect();
+                        return r.width < 24 || r.height < 24;
+                    }).length;
+                    if (tapTargets.length > 0 && smallTargets / tapTargets.length > 0.1 && smallTargets > 3) {
+                        advisoryIssues.push(`${smallTargets} tap target(s) smaller than 24×24px`);
+                    }
+
+                    // ADVISORY: Small font sizes
+                    const allText = Array.from(document.querySelectorAll('p, span, li, td'));
+                    let smallFonts = 0;
+                    allText.slice(0, 50).forEach((el) => {
+                        const fs = parseFloat(window.getComputedStyle(el).fontSize);
+                        if (fs > 0 && fs < 10) smallFonts++;
+                    });
+                    if (smallFonts > 0) advisoryIssues.push(`${smallFonts} element(s) with font size < 10px`);
+
+                    return {
+                        isMobileFriendly: criticalIssues.length === 0,
+                        issues: [...criticalIssues, ...advisoryIssues],
+                    };
+                });
+            } finally {
+                await mobileContext.close().catch(() => {});
+            }
+        } catch (mobileErr) {
+            console.warn('[SCRAPER] Mobile check failed:', mobileErr.message);
+        }
+
         const statusCode = response?.status() || 0;
         await page.close();
         await browser.close();
-        
-        return { success: true, data: { ...scrapedData, loadTime, statusCode, url } };
+        browser = null;
+
+        // Server-side checks (run after browser is closed to free the session)
+        const origin = new URL(url).origin;
+
+        const [robotsData, brokenLinksCount] = await Promise.all([
+            fetchRobotsTxt(origin),
+            checkBrokenLinks(scrapedData.links.internalHrefs || []),
+        ]);
+
+        // Remove internalHrefs from final payload (not needed by consumers)
+        const { internalHrefs: _dropped, ...links } = scrapedData.links;
+
+        return {
+            success: true,
+            data: {
+                ...scrapedData,
+                links: { ...links, broken: brokenLinksCount },
+                robotsTxt: robotsData,
+                coreWebVitals: cwv,
+                mobileFriendliness,
+                loadTime,
+                statusCode,
+                url,
+            },
+        };
     } catch (error) {
         console.error("[SCRAPER] Playwright session failed:", error.message);
         if(browser) {
             try {
                 await browser.close();
-            } catch (error) {
-                console.error("[SCRAPER] Failed to close browser:", error.message);
+            } catch (closeError) {
+                console.error("[SCRAPER] Failed to close browser:", closeError.message);
             }
         }
         return { success: false, error: error.message };

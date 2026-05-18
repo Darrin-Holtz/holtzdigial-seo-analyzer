@@ -22,6 +22,8 @@ interface KeywordItem {
 export default function RankTracker() {
     const { api } = useApp();
     const [keywords, setKeywords] = useState<KeywordItem[]>([]);
+
+    useEffect(() => { document.title = "Rank Tracker — Rank Pilot"; }, []);
     const [loading, setLoading] = useState(true);
     const [showAddModal, setShowAddModal] = useState(false);
     const [newKeyword, setNewKeyword] = useState("");
@@ -59,33 +61,42 @@ export default function RankTracker() {
         try {
             const res = await api.post("/api/rank/add", { keyword: newKeyword.trim(), url: newUrl.trim() });
             if (res.data.success) {
-                setKeywords((prev) => [res.data.tracking, ...prev]);                
+                setKeywords((prev) => [res.data.tracking, ...prev]);
                 setNewKeyword("");
                 setNewUrl("");
                 setShowAddModal(false);
 
-                // Poll for completion
+                // Poll for completion with exponential backoff: 3s → 6s → 12s → capped at 20s
                 const id = res.data.tracking._id;
-                let pollRetries = 0;
-                const pollInterval = setInterval(async () => {
-                    try {
-                        const check = await api.get(`/api/rank/${id}`);
-                        pollRetries = 0;
-                        if (check.data.tracking.status !== "checking") {
-                            clearInterval(pollInterval);
-                            pollIntervalsRef.current = pollIntervalsRef.current.filter((t) => t !== pollInterval);
-                            setKeywords((prev) => prev.map((k) => (k._id === id ? check.data.tracking : k)));
+                let pollDelay = 3000;
+                let pollErrors = 0;
+                const MAX_POLL_ERRORS = 5;
+
+                const schedulePollAdd = () => {
+                    const t = setTimeout(async () => {
+                        pollIntervalsRef.current = pollIntervalsRef.current.filter((x) => x !== t);
+                        try {
+                            const check = await api.get(`/api/rank/${id}`);
+                            if (check.data.tracking.status !== "checking") {
+                                setKeywords((prev) => prev.map((k) => (k._id === id ? check.data.tracking : k)));
+                            } else {
+                                pollDelay = Math.min(pollDelay * 2, 20000);
+                                const next = schedulePollAdd();
+                                if (next) pollIntervalsRef.current.push(next);
+                            }
+                        } catch {
+                            if (++pollErrors < MAX_POLL_ERRORS) {
+                                pollDelay = Math.min(pollDelay * 2, 20000);
+                                const next = schedulePollAdd();
+                                if (next) pollIntervalsRef.current.push(next);
+                            }
                         }
-                    } catch (error: any) {
-                        console.error("Failed to fetch tracking status:", error);
-                        if (++pollRetries >= 5) {
-                            clearInterval(pollInterval);
-                            pollIntervalsRef.current = pollIntervalsRef.current.filter((t) => t !== pollInterval);
-                        }
-                    }
-                }, 3000);
-                pollIntervalsRef.current.push(pollInterval);
-            } 
+                    }, pollDelay) as unknown as ReturnType<typeof setInterval>;
+                    return t;
+                };
+                const first = schedulePollAdd();
+                if (first) pollIntervalsRef.current.push(first);
+            }
         } catch (err: any) {
             setAddError("An error occurred while adding the keyword.");
         } finally {
@@ -97,34 +108,44 @@ export default function RankTracker() {
         setRefreshing(id);
         try {
             await api.post(`/api/rank/${id}/refresh`);
-            // Update status to checking
             setKeywords((prev) => prev.map((k) => (k._id === id ? { ...k, status: "checking" } : k)));
-            // Poll for completion
-            let refreshRetries = 0;
-            const pollInterval = setInterval(async () => {
-                try {
-                    const check = await api.get(`/api/rank/${id}`);
-                    refreshRetries = 0;
-                    if (check.data.tracking.status !== "checking") {
-                        clearInterval(pollInterval);
-                        pollIntervalsRef.current = pollIntervalsRef.current.filter((t) => t !== pollInterval);
-                        setKeywords((prev) => prev.map((k) => (k._id === id ? check.data.tracking : k)));
-                        setRefreshing(null);
+
+            // Poll for completion with exponential backoff
+            let refreshDelay = 3000;
+            let refreshErrors = 0;
+            const MAX_REFRESH_ERRORS = 5;
+
+            const schedulePollRefresh = () => {
+                const t = setTimeout(async () => {
+                    pollIntervalsRef.current = pollIntervalsRef.current.filter((x) => x !== t);
+                    try {
+                        const check = await api.get(`/api/rank/${id}`);
+                        if (check.data.tracking.status !== "checking") {
+                            setKeywords((prev) => prev.map((k) => (k._id === id ? check.data.tracking : k)));
+                            setRefreshing(null);
+                        } else {
+                            refreshDelay = Math.min(refreshDelay * 2, 20000);
+                            const next = schedulePollRefresh();
+                            if (next) pollIntervalsRef.current.push(next);
+                        }
+                    } catch {
+                        if (++refreshErrors < MAX_REFRESH_ERRORS) {
+                            refreshDelay = Math.min(refreshDelay * 2, 20000);
+                            const next = schedulePollRefresh();
+                            if (next) pollIntervalsRef.current.push(next);
+                        } else {
+                            setRefreshing(null);
+                        }
                     }
-                } catch (error: any) {
-                    console.error("Failed to fetch tracking status:", error);
-                    if (++refreshRetries >= 5) {
-                        clearInterval(pollInterval);
-                        pollIntervalsRef.current = pollIntervalsRef.current.filter((t) => t !== pollInterval);
-                        setRefreshing(null);
-                    }
-                }
-            }, 3000);
-            pollIntervalsRef.current.push(pollInterval);
+                }, refreshDelay) as unknown as ReturnType<typeof setInterval>;
+                return t;
+            };
+            const first = schedulePollRefresh();
+            if (first) pollIntervalsRef.current.push(first);
         } catch (err) {
             console.error("Failed to refresh ranking:", err);
             setRefreshing(null);
-        } 
+        }
     };
 
     const handleDelete = async (id: string) => {
@@ -142,13 +163,13 @@ export default function RankTracker() {
 
     const handleToggle = async (id: string) => {
         try {
-            const res =await api.put(`/api/rank/${id}/toggle`);
+            const res = await api.put(`/api/rank/${id}/toggle`);
             if (res.data.success) {
                 setKeywords((prev) => prev.map((k) => (k._id === id ? { ...k, active: res.data.tracking.active } : k)));
             }
         } catch (err) {
             console.error("Failed to toggle tracking:", err);
-        }   
+        }
     };
 
     const getPositionBadge = (pos: number | null) => {
@@ -195,7 +216,7 @@ export default function RankTracker() {
     useEffect(() => {
         (async () => await fetchKeywords())();
         return () => {
-            pollIntervalsRef.current.forEach(clearInterval);
+            pollIntervalsRef.current.forEach(clearTimeout);
         };
     }, []);
 
@@ -266,11 +287,20 @@ export default function RankTracker() {
                 ) : processedData.length === 0 ? (
                     <div className="glass rounded-2xl p-12 text-center">
                         <Target size={48} className="mx-auto text-muted-foreground mb-4 opacity-50" />
-                        <h3 className="text-lg font-semibold text-foreground mb-2">No keywords tracked yet</h3>
-                        <p className="text-sm text-muted-foreground mb-6">Add your first keyword and URL to start tracking your Google rankings.</p>
-                        <button onClick={() => setShowAddModal(true)} className="bg-primary px-5 py-2.5 rounded-xl text-sm font-semibold text-primary-foreground hover:opacity-90 transition-opacity" style={{ color: "var(--background)" }}>
-                            Track Your First Keyword
-                        </button>
+                        {keywords.length === 0 ? (
+                            <>
+                                <h3 className="text-lg font-semibold text-foreground mb-2">No keywords tracked yet</h3>
+                                <p className="text-sm text-muted-foreground mb-6">Add your first keyword and URL to start tracking your Google rankings.</p>
+                                <button onClick={() => setShowAddModal(true)} className="bg-primary px-5 py-2.5 rounded-xl text-sm font-semibold text-primary-foreground hover:opacity-90 transition-opacity" style={{ color: "var(--background)" }}>
+                                    Track Your First Keyword
+                                </button>
+                            </>
+                        ) : (
+                            <>
+                                <h3 className="text-lg font-semibold text-foreground mb-2">No matching keywords</h3>
+                                <p className="text-sm text-muted-foreground">Try adjusting your search or filter.</p>
+                            </>
+                        )}
                     </div>
                 ) : (
                     <div className="space-y-3" style={{ animationDelay: "200ms" }}>

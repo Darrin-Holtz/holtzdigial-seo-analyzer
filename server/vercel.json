@@ -5,9 +5,7 @@
             "src": "server.js",
             "use": "@vercel/node",
             "config": {
-                "includeFiles": [
-                    "dist/**"
-                ]
+                "maxDuration": 60
             }
         }
     ],
@@ -15,6 +13,12 @@
         {
             "src": "/(.*)",
             "dest": "server.js"
+        }
+    ],
+    "crons": [
+        {
+            "path": "/api/cron/rank-tracking",
+            "schedule": "0 11 * * *"
         }
     ]
 }

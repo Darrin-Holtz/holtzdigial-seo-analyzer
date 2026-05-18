@@ -16,6 +16,8 @@ export default function Analyze() {
     const {api} = useApp();
     const [url, setUrl] = useState("");
     const [analyzing, setAnalyzing] = useState(false);
+
+    useEffect(() => { document.title = "Analyze Website — Rank Pilot"; }, []);
     const [currentStep, setCurrentStep] = useState(0);
     const [error, setError] = useState("");
     const [searchParams] = useSearchParams();
@@ -47,38 +49,45 @@ export default function Analyze() {
             // Step 1: Scanning
             setCurrentStep(1);
 
-            // Poll for completion
+            // Poll for completion with exponential backoff: 2s → 4s → 8s → capped at 15s
             let attempts = 0;
-            const maxAttempts = 60; // ~30 seconds
-            pollRef.current = setInterval(async () => {
-                attempts++;
-                if (attempts > maxAttempts) {
-                    if (pollRef.current) clearInterval(pollRef.current);
-                    setAnalyzing(false);
-                    setError("Analysis timed out. Please try again.");
-                    return;
-                }
+            const maxAttempts = 20; // ~2 min total (2+4+8+15*17)
+            let delay = 2000;
 
-                try {
-                   const check = await api.get(`/api/analysis/${id}`); 
-                   const analysis = check.data.analysis;
+            const schedulePoll = () => {
+                pollRef.current = setTimeout(async () => {
+                    attempts++;
+                    if (attempts > maxAttempts) {
+                        setAnalyzing(false);
+                        setError("Analysis timed out. Please try again.");
+                        return;
+                    }
 
-                    if (analysis.status === "completed") {
-                            if (pollRef.current) clearInterval(pollRef.current);
+                    try {
+                        const check = await api.get(`/api/analysis/${id}`);
+                        const analysis = check.data.analysis;
+
+                        if (analysis.status === "completed") {
                             setCurrentStep(3);
                             setTimeout(() => navigate(`/report/${id}`), 1000);
-                    } else if (analysis.status === "failed"){
-                        if (pollRef.current) clearInterval(pollRef.current);
-                        setAnalyzing(false);
-                        setError("Analysis failed. The website may be blocking our crawler or there was an issue during processing.");
-                    } else {
-                        // Still processing - advance visual steps
-                        if (attempts > 5) setCurrentStep(2);
+                        } else if (analysis.status === "failed") {
+                            setAnalyzing(false);
+                            setError("Analysis failed. The website may be blocking our crawler or there was an issue during processing.");
+                        } else {
+                            // Still processing — advance visual step, then re-schedule
+                            if (attempts > 3) setCurrentStep(2);
+                            delay = Math.min(delay * 1.5, 15000);
+                            schedulePoll();
+                        }
+                    } catch {
+                        // Ignore transient polling errors, keep going
+                        delay = Math.min(delay * 1.5, 15000);
+                        schedulePoll();
                     }
-                } catch (err: any) {
-                    // Ignore individual polling errors, but log if needed
-                }
-            },2000);
+                }, delay);
+            };
+
+            schedulePoll();
         } catch (err: any) {
             setError(err.response?.data?.message || err.message || "Failed to start analysis. Please check the URL and try again.");
             setAnalyzing(false);
@@ -99,7 +108,7 @@ export default function Analyze() {
         }
 
         return () => {
-            if (pollRef.current) clearInterval(pollRef.current);
+            if (pollRef.current) clearTimeout(pollRef.current);
         };
     }, []);
 

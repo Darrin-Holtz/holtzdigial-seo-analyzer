@@ -47,7 +47,7 @@ const analysisSchema = new mongoose.Schema({
     images: {
         total: { type: Number, default: 0 },
         withAlt: { type: Number, default: 0 },
-        withoutAlt: { type: Number, default: 0 },
+        missingAlt: { type: Number, default: 0 },
     },
     keywords: [{
         word: String,
@@ -58,6 +58,22 @@ const analysisSchema = new mongoose.Schema({
     loadTime: { type: Number, default: 0 },
     pageSize: { type: Number, default: 0 },
     wordCount: { type: Number, default: 0 },
+    coreWebVitals: {
+        fcp: { type: Number, default: null },
+        lcp: { type: Number, default: null },
+        cls: { type: Number, default: null },
+        ttfb: { type: Number, default: null },
+    },
+    mobileFriendliness: {
+        isMobileFriendly: { type: Boolean, default: null },
+        issues: [String],
+    },
+    robotsTxt: {
+        exists: { type: Boolean, default: null },
+        allowsCrawling: { type: Boolean, default: null },
+        sitemapUrl: { type: String, default: null },
+    },
+    structuredData: { type: mongoose.Schema.Types.Mixed, default: [] },
     status: { type: String, enum: ['pending', 'processing', 'completed', 'failed'], default: 'pending' },
 
 

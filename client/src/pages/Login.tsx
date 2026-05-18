@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Mail, Lock, Loader2, ChartNoAxesColumnIcon, User2Icon } from "lucide-react";
 import { useApp } from "../context/AppContext";
@@ -6,6 +6,9 @@ import toast from "react-hot-toast";
 
 export default function Login({ state }: { state: string }) {
     const [isLoginState, setIsLoginState] = useState(state === "login");
+    useEffect(() => {
+        document.title = isLoginState ? "Sign In — Rank Pilot" : "Create Account — Rank Pilot";
+    }, [isLoginState]);
     const [name, setName] = useState("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");

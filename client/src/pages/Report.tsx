@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import ScoreGauge from "../components/ScoreGauge";
 import IssueCard from "../components/IssueCard";
-import { ArrowLeft, Globe, Clock, FileText, Image, Link2, Heading, Tag, AlertCircle, ExternalLink, Type, Search } from "lucide-react";
+import { ArrowLeft, Globe, Clock, FileText, Image, Link2, Heading, Tag, AlertCircle, ExternalLink, Type, Search, Download, Smartphone, Zap, Code } from "lucide-react";
 import { useApp } from "../context/AppContext";
 
 interface AnalysisData {
@@ -45,6 +45,7 @@ interface AnalysisData {
         internal: number;
         external: number;
         total: number;
+        broken: number;
     };
     images: {
         total: number;
@@ -53,26 +54,99 @@ interface AnalysisData {
     };
     keywords: { word: string; count: number; density: number }[];
     issues: { severity: string; category: string; message: string; recommendation: string }[];
+    coreWebVitals?: { fcp: number | null; lcp: number | null; cls: number | null; ttfb: number | null };
+    mobileFriendliness?: { isMobileFriendly: boolean; issues: string[] };
+    robotsTxt?: { exists: boolean; allowsCrawling: boolean; sitemapUrl: string | null };
+    structuredData?: object[];
 }
 
 export default function Report() {
     const {api} = useApp();
     const { id } = useParams();
     const [analysis, setAnalysis] = useState<AnalysisData | null>(null);
+    const [prevAnalysis, setPrevAnalysis] = useState<AnalysisData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [activeTab, setActiveTab] = useState("overview");
+    useEffect(() => {
+        if (analysis?.url) {
+            const domain = new URL(analysis.url).hostname.replace(/^www\./, "");
+            document.title = `SEO Report: ${domain} — Rank Pilot`;
+        } else {
+            document.title = "SEO Report — Rank Pilot";
+        }
+    }, [analysis?.url]);
+
+    // ── CSV Export ────────────────────────────────────────────────────────────
+    const exportCSV = () => {
+        if (!analysis) return;
+        const rows = [
+            ["Field", "Value"],
+            ["URL", analysis.url],
+            ["Date", new Date(analysis.createdAt).toLocaleString()],
+            ["Overall Score", analysis.overallScore],
+            ["SEO Score", analysis.categories.seo],
+            ["Performance Score", analysis.categories.performance],
+            ["Accessibility Score", analysis.categories.accessibility],
+            ["Best Practices Score", analysis.categories.bestPractices],
+            ["Load Time (ms)", analysis.loadTime],
+            ["Page Size (KB)", Math.round(analysis.pageSize / 1024)],
+            ["Word Count", analysis.wordCount],
+            ["LCP (ms)", analysis.coreWebVitals?.lcp ?? "N/A"],
+            ["FCP (ms)", analysis.coreWebVitals?.fcp ?? "N/A"],
+            ["CLS", analysis.coreWebVitals?.cls ?? "N/A"],
+            ["TTFB (ms)", analysis.coreWebVitals?.ttfb ?? "N/A"],
+            ["Mobile Friendly", analysis.mobileFriendliness?.isMobileFriendly ?? "N/A"],
+            ["Internal Links", analysis.links.internal],
+            ["External Links", analysis.links.external],
+            ["Broken Links", analysis.links.broken ?? 0],
+            ["Total Images", analysis.images.total],
+            ["Images Missing Alt", analysis.images.missingAlt],
+            [],
+            ["Issues"],
+            ["Severity", "Category", "Message", "Recommendation"],
+            ...analysis.issues.map((i) => [i.severity, i.category, `"${i.message.replace(/"/g, '""')}"`, `"${i.recommendation.replace(/"/g, '""')}"`]),
+        ];
+        const csv = rows.map((r) => r.join(",")).join("\n");
+        const blob = new Blob([csv], { type: "text/csv" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `seo-report-${new URL(analysis.url).hostname}-${new Date(analysis.createdAt).toISOString().slice(0, 10)}.csv`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+    };
+
+    // ── Print-to-PDF ──────────────────────────────────────────────────────────
+    const exportPDF = () => window.print();
 
     const fetchAnalysis = async () => {
         try {
             const res = await api.get(`/api/analysis/${id}`);
             if (res.data.success) {
                 if (res.data.analysis.status === "processing") {
-                    // Poll for completion
                     setTimeout(fetchAnalysis, 2000);
                     return;
                 }
-                setAnalysis(res.data.analysis);
+                const current = res.data.analysis;
+                setAnalysis(current);
+
+                // Fetch previous analysis of same URL for historical comparison
+                try {
+                    const listRes = await api.get(`/api/analysis/list?limit=50`);
+                    if (listRes.data.success) {
+                        const others = listRes.data.analyses.filter(
+                            (a: AnalysisData) => a.url === current.url && a._id !== current._id && a.status === "completed"
+                        );
+                        if (others.length > 0) {
+                            // Pick the most recent previous run
+                            others.sort((a: AnalysisData, b: AnalysisData) =>
+                                new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+                            );
+                            const prevRes = await api.get(`/api/analysis/${others[0]._id}`);
+                            if (prevRes.data.success) setPrevAnalysis(prevRes.data.analysis);
+                        }
+                    }
+                } catch { /* comparison is optional */ }
             } else {
                 setError(res.data.message || "Failed to fetch analysis.");
             }
@@ -99,7 +173,9 @@ export default function Report() {
         { id: "overview", label: "Overview" },
         { id: "meta", label: "Meta Tags" },
         { id: "content", label: "Content" },
+        { id: "vitals", label: "Vitals" },
         { id: "issues", label: "Issues" },
+        ...(prevAnalysis ? [{ id: "compare", label: "Compare" }] : []),
     ];
 
     useEffect(() => {
@@ -172,6 +248,17 @@ export default function Report() {
                                     {new Date(analysis.createdAt).toLocaleDateString()} at {new Date(analysis.createdAt).toLocaleTimeString()}
                                 </span>
                             </div>
+                        </div>
+                        {/* Export buttons */}
+                        <div className="flex items-center gap-2 print:hidden">
+                            <button onClick={exportCSV} className="glass px-3 py-2 rounded-xl text-xs font-medium flex items-center gap-1.5 hover:bg-muted/50 transition-all text-foreground">
+                                <Download size={14} />
+                                CSV
+                            </button>
+                            <button onClick={exportPDF} className="glass px-3 py-2 rounded-xl text-xs font-medium flex items-center gap-1.5 hover:bg-muted/50 transition-all text-foreground">
+                                <Download size={14} />
+                                PDF
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -470,7 +557,6 @@ export default function Report() {
                         <div>
                             {analysis.issues.length > 0 ? (
                                 <>
-                                    {/* Issue filters */}
                                     <div className="flex items-center gap-3 mb-4 flex-wrap">
                                         <span className="text-sm text-muted-foreground">Filter:</span>
                                         <span className="severity-critical px-2.5 py-1 rounded-full text-xs font-semibold">{criticalCount} Critical</span>
@@ -492,6 +578,202 @@ export default function Report() {
                                     <p className="text-sm text-muted-foreground">Your website is following SEO best practices.</p>
                                 </div>
                             )}
+                        </div>
+                    )}
+
+                    {activeTab === "vitals" && (
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            {/* Core Web Vitals */}
+                            <div className="bg-card border border-border rounded-2xl p-6">
+                                <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
+                                    <Zap size={20} className="text-warning" />
+                                    Core Web Vitals
+                                </h3>
+                                {analysis.coreWebVitals ? (
+                                    <div className="space-y-3">
+                                        {[
+                                            { label: "LCP", desc: "Largest Contentful Paint", value: analysis.coreWebVitals.lcp, unit: "ms", good: 2500, ok: 4000, format: (v: number) => `${v}ms` },
+                                            { label: "FCP", desc: "First Contentful Paint", value: analysis.coreWebVitals.fcp, unit: "ms", good: 1800, ok: 3000, format: (v: number) => `${v}ms` },
+                                            { label: "TTFB", desc: "Time to First Byte", value: analysis.coreWebVitals.ttfb, unit: "ms", good: 800, ok: 1800, format: (v: number) => `${v}ms` },
+                                            { label: "CLS", desc: "Cumulative Layout Shift", value: analysis.coreWebVitals.cls, unit: "", good: 0.1, ok: 0.25, format: (v: number) => v.toFixed(3) },
+                                        ].map((metric) => {
+                                            const status = metric.value === null ? "unknown"
+                                                : metric.value <= metric.good ? "good"
+                                                : metric.value <= metric.ok ? "ok" : "poor";
+                                            const colorClass = status === "good" ? "text-success" : status === "ok" ? "text-warning" : status === "poor" ? "text-danger" : "text-muted-foreground";
+                                            const bgClass = status === "good" ? "bg-success/10 border-success/20" : status === "ok" ? "bg-warning/10 border-warning/20" : status === "poor" ? "bg-danger/10 border-danger/20" : "bg-muted/30 border-border";
+                                            return (
+                                                <div key={metric.label} className={`flex items-center justify-between p-3.5 rounded-xl border ${bgClass}`}>
+                                                    <div>
+                                                        <span className="text-sm font-bold text-foreground">{metric.label}</span>
+                                                        <p className="text-xs text-muted-foreground">{metric.desc}</p>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <span className={`text-lg font-bold ${colorClass}`}>
+                                                            {metric.value !== null ? metric.format(metric.value) : "N/A"}
+                                                        </span>
+                                                        <p className="text-xs text-muted-foreground capitalize">{status}</p>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-muted-foreground">Core Web Vitals not available for this analysis.</p>
+                                )}
+                            </div>
+
+                            {/* Mobile Friendliness */}
+                            <div className="bg-card border border-border rounded-2xl p-6">
+                                <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
+                                    <Smartphone size={20} className="text-primary" />
+                                    Mobile Friendliness
+                                </h3>
+                                {analysis.mobileFriendliness ? (
+                                    <div>
+                                        <div className={`flex items-center gap-3 p-4 rounded-xl border mb-4 ${analysis.mobileFriendliness.isMobileFriendly ? "bg-success/10 border-success/20" : "bg-danger/10 border-danger/20"}`}>
+                                            <span className="text-3xl">{analysis.mobileFriendliness.isMobileFriendly ? "✓" : "✗"}</span>
+                                            <div>
+                                                <p className={`font-bold ${analysis.mobileFriendliness.isMobileFriendly ? "text-success" : "text-danger"}`}>
+                                                    {analysis.mobileFriendliness.isMobileFriendly ? "Mobile Friendly" : "Not Mobile Friendly"}
+                                                </p>
+                                                <p className="text-xs text-muted-foreground">Tested at 375×667 viewport</p>
+                                            </div>
+                                        </div>
+                                        {analysis.mobileFriendliness.issues.length > 0 && (
+                                            <div className="space-y-2">
+                                                {analysis.mobileFriendliness.issues.map((issue, i) => (
+                                                    <div key={i} className="flex items-start gap-2 p-3 bg-warning/5 border border-warning/20 rounded-lg text-sm text-foreground">
+                                                        <span className="text-warning mt-0.5">⚠</span>
+                                                        {issue}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-muted-foreground">Mobile check not available for this analysis.</p>
+                                )}
+                            </div>
+
+                            {/* robots.txt + Structured Data */}
+                            <div className="bg-card border border-border rounded-2xl p-6">
+                                <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
+                                    <FileText size={20} className="text-secondary" />
+                                    robots.txt
+                                </h3>
+                                {analysis.robotsTxt ? (
+                                    <div className="space-y-3">
+                                        <div className="flex justify-between p-3 bg-muted/50 border border-border rounded-xl">
+                                            <span className="text-sm text-muted-foreground">File exists</span>
+                                            <span className={`text-sm font-semibold ${analysis.robotsTxt.exists ? "text-success" : "text-danger"}`}>{analysis.robotsTxt.exists ? "Yes" : "No"}</span>
+                                        </div>
+                                        <div className="flex justify-between p-3 bg-muted/50 border border-border rounded-xl">
+                                            <span className="text-sm text-muted-foreground">Allows crawling</span>
+                                            <span className={`text-sm font-semibold ${analysis.robotsTxt.allowsCrawling ? "text-success" : "text-danger"}`}>{analysis.robotsTxt.allowsCrawling ? "Yes" : "Blocked"}</span>
+                                        </div>
+                                        <div className="flex justify-between p-3 bg-muted/50 border border-border rounded-xl">
+                                            <span className="text-sm text-muted-foreground">Sitemap URL</span>
+                                            <span className="text-sm font-semibold text-foreground truncate max-w-[180px]">{analysis.robotsTxt.sitemapUrl || "Not found"}</span>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-muted-foreground">robots.txt data not available.</p>
+                                )}
+                            </div>
+
+                            <div className="bg-card border border-border rounded-2xl p-6">
+                                <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
+                                    <Code size={20} className="text-accent" />
+                                    Structured Data (JSON-LD)
+                                </h3>
+                                {analysis.structuredData && analysis.structuredData.length > 0 ? (
+                                    <div className="space-y-2">
+                                        {analysis.structuredData.map((sd: any, i) => {
+                                            const types = Array.isArray(sd["@type"]) ? sd["@type"] : sd["@type"] ? [sd["@type"]] : [];
+                                            const typeName = types.length > 0 ? types.join(", ") : "Unknown Type";
+                                            let detail = "";
+                                            if (sd.name) detail = sd.name;
+                                            else if (sd.url) detail = sd.url;
+                                            if (!detail && Array.isArray(sd.mainEntity)) detail = `${sd.mainEntity.length} item${sd.mainEntity.length !== 1 ? "s" : ""}`;
+                                            return (
+                                                <div key={i} className="p-3 bg-success/5 border border-success/20 rounded-xl flex items-center justify-between gap-3">
+                                                    <div className="min-w-0">
+                                                        <p className="text-sm font-semibold text-success">{typeName}</p>
+                                                        {detail && <p className="text-xs text-muted-foreground truncate mt-0.5">{detail}</p>}
+                                                    </div>
+                                                    <span className="text-xs text-muted-foreground shrink-0">{sd["@context"] || "schema.org"}</span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                ) : (
+                                    <div className="p-4 bg-warning/5 border border-warning/20 rounded-xl">
+                                        <p className="text-sm text-warning font-medium">No structured data found</p>
+                                        <p className="text-xs text-muted-foreground mt-1">Adding JSON-LD schema markup can improve rich search results.</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === "compare" && prevAnalysis && (
+                        <div className="bg-card border border-border rounded-2xl p-6">
+                            <div className="flex items-center justify-between mb-6">
+                                <h3 className="text-lg font-semibold text-foreground">Score Comparison</h3>
+                                <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                                    <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-primary inline-block" /> Current ({new Date(analysis.createdAt).toLocaleDateString()})</span>
+                                    <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-muted-foreground inline-block" /> Previous ({new Date(prevAnalysis.createdAt).toLocaleDateString()})</span>
+                                </div>
+                            </div>
+                            <div className="space-y-4">
+                                {[
+                                    { label: "Overall Score", curr: analysis.overallScore, prev: prevAnalysis.overallScore },
+                                    { label: "SEO", curr: analysis.categories.seo, prev: prevAnalysis.categories.seo },
+                                    { label: "Performance", curr: analysis.categories.performance, prev: prevAnalysis.categories.performance },
+                                    { label: "Accessibility", curr: analysis.categories.accessibility, prev: prevAnalysis.categories.accessibility },
+                                    { label: "Best Practices", curr: analysis.categories.bestPractices, prev: prevAnalysis.categories.bestPractices },
+                                ].map((row) => {
+                                    const diff = row.curr - row.prev;
+                                    const diffClass = diff > 0 ? "text-success" : diff < 0 ? "text-danger" : "text-muted-foreground";
+                                    return (
+                                        <div key={row.label} className="flex items-center gap-4 p-4 bg-muted/30 border border-border rounded-xl">
+                                            <span className="text-sm font-medium text-foreground w-32 shrink-0">{row.label}</span>
+                                            <div className="flex-1 flex items-center gap-3">
+                                                <span className="text-sm text-muted-foreground w-8 text-right">{row.prev}</span>
+                                                <div className="flex-1 relative h-2 bg-muted rounded-full overflow-hidden">
+                                                    <div className="absolute inset-y-0 left-0 bg-muted-foreground/40 rounded-full" style={{ width: `${row.prev}%` }} />
+                                                    <div className="absolute inset-y-0 left-0 bg-primary rounded-full transition-all" style={{ width: `${row.curr}%` }} />
+                                                </div>
+                                                <span className="text-sm font-bold text-foreground w-8">{row.curr}</span>
+                                            </div>
+                                            <span className={`text-sm font-bold w-12 text-right ${diffClass}`}>
+                                                {diff > 0 ? `+${diff}` : diff === 0 ? "—" : diff}
+                                            </span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                            <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                {[
+                                    { label: "Issues", curr: analysis.issues.length, prev: prevAnalysis.issues.length, lowerBetter: true },
+                                    { label: "Load Time", curr: analysis.loadTime, prev: prevAnalysis.loadTime, lowerBetter: true, unit: "ms" },
+                                    { label: "Broken Links", curr: analysis.links.broken ?? 0, prev: prevAnalysis.links.broken ?? 0, lowerBetter: true },
+                                    { label: "Missing Alt", curr: analysis.images.missingAlt, prev: prevAnalysis.images.missingAlt, lowerBetter: true },
+                                ].map((row) => {
+                                    const diff = row.curr - row.prev;
+                                    const improved = row.lowerBetter ? diff < 0 : diff > 0;
+                                    return (
+                                        <div key={row.label} className="p-3 bg-muted/30 border border-border rounded-xl text-center">
+                                            <p className="text-xs text-muted-foreground mb-1">{row.label}</p>
+                                            <p className="text-lg font-bold text-foreground">{row.curr}{row.unit}</p>
+                                            <p className={`text-xs font-medium ${diff === 0 ? "text-muted-foreground" : improved ? "text-success" : "text-danger"}`}>
+                                                {diff === 0 ? "No change" : `${diff > 0 ? "+" : ""}${diff}${row.unit || ""}`}
+                                            </p>
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         </div>
                     )}
                 </div>

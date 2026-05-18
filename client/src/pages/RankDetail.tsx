@@ -1,8 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { ArrowLeft, Target, Globe, Clock, TrendingUp, TrendingDown, Minus, RefreshCw, AlertCircle, ExternalLink, Trophy, Users, Calendar, Loader2 } from "lucide-react";
 import { useApp } from "../context/AppContext";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 interface RankHistoryEntry {
     date: string;
@@ -44,7 +45,15 @@ export default function RankDetail() {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [activeTab, setActiveTab] = useState("overview");
-    const chartRef = useRef<HTMLCanvasElement>(null);
+    const [dateRange, setDateRange] = useState<"7" | "30" | "90" | "all">("all");
+
+    useEffect(() => {
+        if (tracking?.keyword) {
+            document.title = `"${tracking.keyword}" Rankings — Rank Pilot`;
+        } else {
+            document.title = "Rank Detail — Rank Pilot";
+        }
+    }, [tracking?.keyword]);
 
     const fetchTracking = async () => {
         try {
@@ -93,140 +102,6 @@ export default function RankDetail() {
         }
     };
 
-    const drawChart = () => {
-        const canvas = chartRef.current;
-        if (!canvas || !tracking) return;
-
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
-
-        const history = tracking.rankHistory.filter((h) => h.position !== null).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-        if (history.length === 0) return;
-
-        // High DPI support
-        const dpr = window.devicePixelRatio || 1;
-        const rect = canvas.getBoundingClientRect();
-        canvas.width = rect.width * dpr;
-        canvas.height = rect.height * dpr;
-        ctx.scale(dpr, dpr);
-
-        const w = rect.width;
-        const h = rect.height;
-        const padding = { top: 30, right: 30, bottom: 50, left: 50 };
-        const chartW = w - padding.left - padding.right;
-        const chartH = h - padding.top - padding.bottom;
-
-        // Clear
-        ctx.clearRect(0, 0, w, h);
-
-        // Find range (invert: position 1 = top)
-        const positions = history.map((h) => h.position!);
-        const minPos = Math.max(1, Math.min(...positions) - 2);
-        const maxPos = Math.max(...positions) + 2;
-
-        // Dynamic colors from theme
-        const styles = getComputedStyle(document.documentElement);
-        const borderColor = styles.getPropertyValue("--border").trim() || "rgba(128,128,128,0.2)";
-        const primaryColor = styles.getPropertyValue("--accent").trim() || "#3b82f6";
-        const textColor = styles.getPropertyValue("--muted-foreground").trim() || "rgba(128,128,128,0.5)";
-        const bgColor = styles.getPropertyValue("--background").trim() || "#ffffff";
-
-        // Draw grid
-        ctx.strokeStyle = borderColor;
-        ctx.lineWidth = 1;
-        const gridLines = 5;
-        for (let i = 0; i <= gridLines; i++) {
-            const y = padding.top + (chartH / gridLines) * i;
-            ctx.beginPath();
-            ctx.moveTo(padding.left, y);
-            ctx.lineTo(w - padding.right, y);
-            ctx.stroke();
-
-            // Labels (inverted: top = lowest position number)
-            const posVal = Math.round(minPos + ((maxPos - minPos) / gridLines) * i);
-            ctx.fillStyle = textColor;
-            ctx.font = "11px Outfit";
-            ctx.textAlign = "right";
-            ctx.fillText(`#${posVal}`, padding.left - 8, y + 4);
-        }
-
-        // Draw date labels
-        ctx.fillStyle = textColor;
-        ctx.font = "10px Outfit";
-        ctx.textAlign = "center";
-        const maxLabels = Math.min(history.length, 7);
-        const labelStep = Math.max(1, Math.floor(history.length / maxLabels));
-        for (let i = 0; i < history.length; i += labelStep) {
-            const x = padding.left + (chartW / Math.max(history.length - 1, 1)) * i;
-            const date = new Date(history[i].date);
-            ctx.fillText(`${date.getMonth() + 1}/${date.getDate()}`, x, h - padding.bottom + 20);
-        }
-
-        // Draw line
-        ctx.beginPath();
-        ctx.strokeStyle = primaryColor;
-        ctx.lineWidth = 2.5;
-        ctx.lineJoin = "round";
-        ctx.lineCap = "round";
-
-        history.forEach((entry, i) => {
-            const x = padding.left + (chartW / Math.max(history.length - 1, 1)) * i;
-            const yNorm = (entry.position! - minPos) / (maxPos - minPos);
-            const y = padding.top + yNorm * chartH;
-
-            if (i === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
-        });
-        ctx.stroke();
-
-        // Draw gradient fill
-        const gradient = ctx.createLinearGradient(0, padding.top, 0, h - padding.bottom);
-        // Using accent rgb roughly (59, 130, 246)
-        gradient.addColorStop(0, "rgba(59, 130, 246, 0.15)");
-        gradient.addColorStop(1, "rgba(59, 130, 246, 0)");
-
-        ctx.beginPath();
-        history.forEach((entry, i) => {
-            const x = padding.left + (chartW / Math.max(history.length - 1, 1)) * i;
-            const yNorm = (entry.position! - minPos) / (maxPos - minPos);
-            const y = padding.top + yNorm * chartH;
-            if (i === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
-        });
-        ctx.lineTo(padding.left + chartW, h - padding.bottom);
-        ctx.lineTo(padding.left, h - padding.bottom);
-        ctx.closePath();
-        ctx.fillStyle = gradient;
-        ctx.fill();
-
-        // Draw dots
-        history.forEach((entry, i) => {
-            const x = padding.left + (chartW / Math.max(history.length - 1, 1)) * i;
-            const yNorm = (entry.position! - minPos) / (maxPos - minPos);
-            const y = padding.top + yNorm * chartH;
-
-            ctx.beginPath();
-            ctx.arc(x, y, 4, 0, Math.PI * 2);
-            ctx.fillStyle = primaryColor;
-            ctx.fill();
-            ctx.beginPath();
-            ctx.arc(x, y, 2, 0, Math.PI * 2);
-            ctx.fillStyle = bgColor;
-            ctx.fill();
-        });
-
-        // Y-axis label
-        ctx.save();
-        ctx.translate(12, h / 2);
-        ctx.rotate(-Math.PI / 2);
-        ctx.fillStyle = textColor;
-        ctx.font = "11px Outfit";
-        ctx.textAlign = "center";
-        ctx.fillText("Position", 0, 0);
-        ctx.restore();
-    };
-
     const getChangeIndicator = (change: number) => {
         if (change > 0) return { icon: <TrendingUp size={16} />, text: `+${change}`, class: "text-emerald-500" };
         if (change < 0) return { icon: <TrendingDown size={16} />, text: `${change}`, class: "text-danger" };
@@ -244,12 +119,6 @@ export default function RankDetail() {
     useEffect(() => {
         (async () => await fetchTracking())();
     }, [id]);
-
-    useEffect(() => {
-        if (tracking && tracking.rankHistory.length > 0 && chartRef.current) {
-            drawChart();
-        }
-    }, [tracking, activeTab]);
 
     if (loading) {
         return (
@@ -371,21 +240,64 @@ export default function RankDetail() {
                         <div className="space-y-6">
                             {/* Ranking Chart */}
                             <div className="glass rounded-2xl p-6">
-                                <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
-                                    <TrendingUp size={20} className="text-primary" />
-                                    Ranking History
-                                </h3>
-                                {tracking.rankHistory.filter((h) => h.position !== null).length > 0 ? (
-                                    <div className="relative" style={{ height: "300px" }}>
-                                        <canvas ref={chartRef} style={{ width: "100%", height: "100%" }} className="rounded-xl" />
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                                    <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                                        <TrendingUp size={20} className="text-primary" />
+                                        Ranking History
+                                    </h3>
+                                    <div className="flex gap-1">
+                                        {(["7", "30", "90", "all"] as const).map((r) => (
+                                            <button key={r} onClick={() => setDateRange(r)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                                                dateRange === r ? "bg-primary text-primary-foreground" : "glass text-muted-foreground hover:text-foreground"
+                                            }`} style={dateRange === r ? { color: "var(--background)" } : {}}>
+                                                {r === "all" ? "All" : `${r}d`}
+                                            </button>
+                                        ))}
                                     </div>
-                                ) : (
-                                    <div className="text-center py-12 text-muted-foreground">
-                                        <Calendar size={32} className="mx-auto mb-2 opacity-50" />
-                                        <p className="text-sm">No ranking data yet. Check back after the daily tracking runs.</p>
-                                    </div>
-                                )}
-                                <p className="text-xs text-muted-foreground mt-3 text-center">↑ Lower position number = higher rank. Updated daily at 6:00 AM UTC.</p>
+                                </div>
+                                {(() => {
+                                    const cutoff = dateRange === "all" ? null : new Date(Date.now() - parseInt(dateRange) * 86400000);
+                                    const chartData = tracking.rankHistory
+                                        .filter((h) => h.position !== null && (cutoff === null || new Date(h.date) >= cutoff))
+                                        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                                        .map((h) => ({
+                                            date: new Date(h.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+                                            position: h.position,
+                                        }));
+                                    if (chartData.length === 0) return (
+                                        <div className="text-center py-12 text-muted-foreground">
+                                            <Calendar size={32} className="mx-auto mb-2 opacity-50" />
+                                            <p className="text-sm">No ranking data in this range.</p>
+                                        </div>
+                                    );
+                                    const positions = chartData.map((d) => d.position as number);
+                                    const minP = Math.max(1, Math.min(...positions) - 1);
+                                    const maxP = Math.max(...positions) + 1;
+                                    return (
+                                        <ResponsiveContainer width="100%" height={280}>
+                                            <LineChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                                                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                                                <XAxis dataKey="date" tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} tickLine={false} />
+                                                <YAxis
+                                                    reversed
+                                                    domain={[minP, maxP]}
+                                                    tickFormatter={(v) => `#${v}`}
+                                                    tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+                                                    tickLine={false}
+                                                    axisLine={false}
+                                                    width={36}
+                                                />
+                                                <Tooltip
+                                                    formatter={(value: any) => [`#${value}`, "Position"]}
+                                                    contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: "12px", fontSize: "12px" }}
+                                                    labelStyle={{ color: "var(--foreground)" }}
+                                                />
+                                                <Line type="monotone" dataKey="position" stroke="var(--primary)" strokeWidth={2.5} dot={{ r: 4, fill: "var(--primary)", strokeWidth: 0 }} activeDot={{ r: 6 }} />
+                                            </LineChart>
+                                        </ResponsiveContainer>
+                                    );
+                                })()}
+                                <p className="text-xs text-muted-foreground mt-2 text-center">Lower position = higher rank. Updated daily at 6 AM ET.</p>
                             </div>
 
                             {/* Top 3 Competitors Preview */}

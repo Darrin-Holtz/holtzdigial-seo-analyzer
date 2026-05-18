@@ -2,6 +2,15 @@ import User from '../models/User.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 
+const IS_PROD = process.env.NODE_ENV === 'production';
+const COOKIE_OPTIONS = {
+    httpOnly: true,           // not accessible via JS — prevents XSS token theft
+    secure: IS_PROD,          // HTTPS only in production
+    sameSite: IS_PROD ? 'strict' : 'lax',
+    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+    path: '/',
+};
+
 //Generate JWT
 const generateToken = (id) => {
   return jwt.sign({id}, process.env.JWT_SECRET, {expiresIn: '30d'});
@@ -25,7 +34,8 @@ export const register = async (req, res) => {
     const user = await User.create({name, email, password: hashedPassword});
     const token = generateToken(user._id);
 
-    res.status(201).json({success: true, token, user});
+    res.cookie('auth_token', token, COOKIE_OPTIONS);
+    res.status(201).json({success: true, user});
   } catch (error) {
     console.error('Error registering user:', error.message);
     res.status(500).json({success: false, message: 'Server error'});
@@ -48,12 +58,19 @@ export const login = async (req, res) => {
 
     const token = generateToken(existingUser._id);
 
-    res.status(201).json({success: true, token, user: existingUser});
+    res.cookie('auth_token', token, COOKIE_OPTIONS);
+    res.status(200).json({success: true, user: existingUser});
   } catch (error) {
     console.error('Error logging in user:', error.message);
     res.status(500).json({success: false, message: 'Server error'});
   }
 }
+
+//Logout
+export const logout = (req, res) => {
+    res.clearCookie('auth_token', { path: '/' });
+    res.json({ success: true, message: 'Logged out' });
+};
 
 //Get current user
 export const getCurrentUser = async (req, res) => {

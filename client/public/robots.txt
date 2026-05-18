@@ -1,0 +1,14 @@
+User-agent: *
+Allow: /
+Allow: /login
+Allow: /register
+
+# Block authenticated app routes — no SEO value, require login
+Disallow: /dashboard
+Disallow: /analyze
+Disallow: /report/
+Disallow: /history
+Disallow: /rank-tracker
+Disallow: /rank/
+
+Sitemap: https://rankpilot.holtzdigital.com/sitemap.xml

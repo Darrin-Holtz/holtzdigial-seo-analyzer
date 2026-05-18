@@ -25,6 +25,8 @@ export default function Dashboard() {
     const [analyses, setAnalyses] = useState<AnalysisSummary[]>([]);
     const [loading, setLoading] = useState(true);
 
+    useEffect(() => { document.title = "Dashboard — Rank Pilot"; }, []);
+
     const fetchRecent = async () => {
         try {
             const res = await api.get("/api/analysis/list?limit=6");

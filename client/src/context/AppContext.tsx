@@ -12,7 +12,6 @@ interface User {
 
 interface AppContextType {
     user: User | null;
-    token: string | null;
     loading: boolean;
     api: AxiosInstance;
     login: (email: string, password: string) => Promise<{success: boolean; message?: string}>;
@@ -20,48 +19,34 @@ interface AppContextType {
     logout: () => void;
 }
 
-const BACKEND_URL = "";
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "";
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-export function AppProvider({ children }: { children: React.ReactNode }) {
-    
-    // Implementation of state and functions will go here
+// Single shared axios instance — credentials (httpOnly cookie) sent automatically
+const api = axios.create({
+    baseURL: BACKEND_URL,
+    withCredentials: true,
+});
+
+export function AppProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
-    const [token, setToken] = useState<string | null>(localStorage.getItem("token"));
     const [loading, setLoading] = useState(true);
 
-    //Axios instance with auth header
-    const api = axios.create({
-        baseURL: BACKEND_URL,
-    });
-
-    //Update axios headers when token changes
-    api.interceptors.request.use((config) => {
-        const token = localStorage.getItem("token");
-        if (token) {
-            config.headers.Authorization = `Bearer ${token}`;
-        }
-        return config;
-    });
-
     const loadUser = async () => {
-        if (!token) {
-            setLoading(false);
-            return;
-        }
         try {
-            const {data} = await api.get("/api/auth/user");
+            const { data } = await api.get("/api/auth/user");
             if (data.success) {
                 setUser(data.user);
+            } else {
+                setUser(null);
             }
-        } catch (error) {
-            localStorage.removeItem("token");
-            setToken(null);
+        } catch {
             setUser(null);
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
-    }
+    };
 
     useEffect(() => {
         loadUser();
@@ -69,43 +54,38 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     const login = async (email: string, password: string) => {
         try {
-            const res = await axios.post(`${BACKEND_URL}/api/auth/login`, { email, password });
-            if (res.data.success) {                
-                setToken(res.data.token);
+            const res = await api.post("/api/auth/login", { email, password });
+            if (res.data.success) {
                 setUser(res.data.user);
-                localStorage.setItem("token", res.data.token);
-                return {success: true};
-            } else {
-                return {success: false, message: res.data.message || "Login failed"};
+                return { success: true };
             }
+            return { success: false, message: res.data.message || "Login failed" };
         } catch (error: any) {
-            return {success: false, message: error.response?.data?.message || "An error occurred"};
-        }   
+            return { success: false, message: error.response?.data?.message || "An error occurred" };
+        }
     };
 
     const register = async (name: string, email: string, password: string) => {
         try {
-            const res = await axios.post(`${BACKEND_URL}/api/auth/register`, { name, email, password });
+            const res = await api.post("/api/auth/register", { name, email, password });
             if (res.data.success) {
-                setToken(res.data.token);
                 setUser(res.data.user);
-                localStorage.setItem("token", res.data.token);
-                return {success: true};
-            } else {
-                return {success: false, message: res.data.message || "Registration failed"};
+                return { success: true };
             }
+            return { success: false, message: res.data.message || "Registration failed" };
         } catch (error: any) {
-            return {success: false, message: error.response?.data?.message || "An error occurred"};
+            return { success: false, message: error.response?.data?.message || "An error occurred" };
         }
     };
 
     const logout = async () => {
-        setToken(null);
+        try {
+            await api.post("/api/auth/logout");
+        } catch { /* ignore network errors on logout */ }
         setUser(null);
-        localStorage.removeItem("token");
     };
-    
-    const value = {user, token, loading, api, login, register, logout, loadUser};
+
+    const value = { user, loading, api, login, register, logout, loadUser };
 
     return (
         <AppContext.Provider value={value}>
@@ -114,7 +94,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     );
 }
 
-export function useApp(){
+export function useApp() {
     const context = useContext(AppContext);
     if (!context) {
         throw new Error("useApp must be used within an AppProvider");

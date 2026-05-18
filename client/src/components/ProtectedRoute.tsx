@@ -2,7 +2,7 @@ import { Navigate, Outlet } from "react-router-dom";
 import { useApp } from "../context/AppContext";
 
 export default function ProtectedRoute() {
-    const {token, loading} = useApp();
+    const { user, loading } = useApp();
 
     if (loading) {
         return (
@@ -11,7 +11,7 @@ export default function ProtectedRoute() {
             </div>
         );
     }
-    if (!token) {
+    if (!user) {
         return <Navigate to="/login" replace />;
     }
     return <Outlet />;

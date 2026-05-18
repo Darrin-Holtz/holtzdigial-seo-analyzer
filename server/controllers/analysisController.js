@@ -1,6 +1,37 @@
 import Analysis from "../models/Analysis.js";
+import User from "../models/User.js";
 import { analyzeSeoData } from "../services/geminiService.js";
 import { scrapeUrl } from "../services/scraperService.js";
+
+// SSRF protection: block private/loopback IP ranges and reserved hostnames
+const BLOCKED_HOSTNAMES = new Set(['localhost', '0.0.0.0']);
+const PRIVATE_IP_REGEX = /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|127\.|::1$|fc00:|fe80:)/;
+
+function isSsrfTarget(hostname) {
+    if (BLOCKED_HOSTNAMES.has(hostname.toLowerCase())) return true;
+    if (PRIVATE_IP_REGEX.test(hostname)) return true;
+    // Block raw IPv4 addresses that map to private ranges after resolution
+    return false;
+}
+
+// Check whether user has exceeded their daily free-plan limit
+async function checkPlanLimit(userId) {
+    const user = await User.findById(userId).select('plan analysisCount lastAnalysisDate');
+    if (!user) return { allowed: false, user: null };
+
+    if (user.plan === 'pro') return { allowed: true, user };
+
+    // Reset daily count if last analysis was on a previous calendar day
+    const today = new Date().toDateString();
+    const lastDate = user.lastAnalysisDate ? new Date(user.lastAnalysisDate).toDateString() : null;
+    if (lastDate !== today) {
+        user.analysisCount = 0;
+        await user.save();
+    }
+
+    if (user.analysisCount >= 5) return { allowed: false, user };
+    return { allowed: true, user };
+}
 
 // Analyze a URL
 export const analyzeUrl = async (req, res) => {
@@ -17,11 +48,28 @@ export const analyzeUrl = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Invalid URL format' });
         }
 
+        // SSRF protection: reject private/internal targets
+        if (isSsrfTarget(validUrl.hostname)) {
+            return res.status(400).json({ success: false, message: 'The provided URL is not allowed.' });
+        }
+
+        // Plan enforcement: free users get 5 analyses per day
+        const { allowed, user } = await checkPlanLimit(req.userId);
+        if (!allowed) {
+            return res.status(403).json({ success: false, message: 'Daily analysis limit reached. Upgrade to Pro for unlimited analyses.' });
+        }
+
         // Create analysis record with pending status
         const analysis = await Analysis.create({
             userId: req.userId,
             url: validUrl.href,
             status: 'processing',
+        });
+
+        // Increment usage counter immediately so concurrent requests are blocked too
+        await User.findByIdAndUpdate(req.userId, {
+            $inc: { analysisCount: 1 },
+            lastAnalysisDate: new Date(),
         });
 
         res.status(202).json({ success: true, message: "Analysis started", analysisId: analysis._id });
@@ -60,6 +108,10 @@ export const analyzeUrl = async (req, res) => {
             analysis.loadTime = scrapeResult.data.loadTime || 0;
             analysis.pageSize = scrapeResult.data.pageSize || 0;
             analysis.wordCount = scrapeResult.data.wordCount || 0;
+            analysis.coreWebVitals = scrapeResult.data.coreWebVitals || {};
+            analysis.mobileFriendliness = scrapeResult.data.mobileFriendliness || {};
+            analysis.robotsTxt = scrapeResult.data.robotsTxt || {};
+            analysis.structuredData = scrapeResult.data.structuredData || [];
             analysis.status = 'completed';
 
             await analysis.save();
@@ -84,9 +136,28 @@ export const analyzeUrl = async (req, res) => {
 // Get analysis by ID
 export const getAnalysis = async (req, res) => {
     try {
-        const analysis = await Analysis.findOne({ _id: req.params.id, userId: req.userId });
+        let analysis = await Analysis.findOne({ _id: req.params.id, userId: req.userId });
         if (!analysis) return res.status(404).json({ success: false, message: 'Analysis not found' });
-        res.json({ success: true, analysis });
+
+        // Inline stale-processing cleanup: if stuck in processing > 5 min, mark failed
+        if (analysis.status === 'processing') {
+            const ageMs = Date.now() - new Date(analysis.updatedAt).getTime();
+            if (ageMs > 5 * 60 * 1000) {
+                analysis.status = 'failed';
+                await analysis.save();
+            }
+        }
+
+        const doc = analysis.toObject();
+        // Normalize legacy field: old docs stored withoutAlt before the rename to missingAlt
+        if (doc.images) {
+            const v = doc.images.missingAlt;
+            if (v === undefined || v === null || (typeof v === 'number' && isNaN(v))) {
+                doc.images.missingAlt = Number(doc.images.withoutAlt) || 0;
+            }
+        }
+
+        res.json({ success: true, analysis: doc });
     } catch (error) {
         console.error("Get Analysis Error:", error.message);
         res.status(500).json({ success: false, message: 'Server error' });
