@@ -55,12 +55,12 @@ export default function RankDetail() {
         }
     }, [tracking?.keyword]);
 
-    const fetchTracking = async () => {
+    const fetchTracking = async (retries = 0) => {
         try {
             const res = await api.get(`/api/rank/${id}`);
             if (res.data.success) {
-                if (res.data.tracking.status === "checking") {                    
-                    setTimeout(fetchTracking, 3000);
+                if (res.data.tracking.status === "checking" && retries < 15) {                    
+                    setTimeout(() => fetchTracking(retries + 1), 3000);
                     setTracking(res.data.tracking);
                     return;
                 }
@@ -77,27 +77,16 @@ export default function RankDetail() {
         if (!tracking) return;
         setRefreshing(true);
         try {
-            await api.post(`/api/rank/${tracking._id}/refresh`);
-            setTracking((prev) => (prev ? { ...prev, status: "checking" } : null));
-
-            const pollInterval = setInterval(async () => {
-                try {
-                    const check = await api.get(`/api/rank/${tracking._id}`);
-                    
-                    if (check.data.tracking.status !== "checking") {
-                        clearInterval(pollInterval);
-                        setTracking(check.data.tracking);
-                        setRefreshing(false);
-                    }
-                    
-                } catch (error: any) {
-                    console.error("Error polling tracking data:", error);
-                    clearInterval(pollInterval);
-                    setRefreshing(false);
-                }
-            }, 3000);
+            const res = await api.post(`/api/rank/${tracking._id}/refresh`);
+            if (res.data.tracking) {
+                setTracking(res.data.tracking);
+            } else {
+                const check = await api.get(`/api/rank/${tracking._id}`);
+                if (check.data.success) setTracking(check.data.tracking);
+            }
         } catch (error: any) {
             console.error("Error refreshing tracking data:", error);
+        } finally {
             setRefreshing(false);
         }
     };

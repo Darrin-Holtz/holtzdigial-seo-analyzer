@@ -31,8 +31,8 @@ export const addKeyword = async (req, res) => {
             status: 'checking',
         });
 
+        await keywordTracking(tracking);
         res.status(201).json({ success: true, message: "Keyword tracking started", tracking });
-        keywordTracking(tracking);
     } catch (error) {
         console.error("Add Keyword Error:", error.message);
         if (error.code === 11000) {
@@ -72,8 +72,8 @@ export const refreshKeyword = async (req, res) => {
         if (!tracking) return res.status(404).json({ success: false, message: 'Keyword tracking not found' });
         tracking.status = 'checking';
         await tracking.save();
-        res.json({ success: true, message: 'Keyword refresh started' });
-        keywordTracking(tracking);
+        await keywordTracking(tracking);
+        res.json({ success: true, message: 'Keyword refresh completed', tracking });
     } catch (error) {
         console.error("Refresh Keyword Error:", error.message);
         res.status(500).json({ success: false, message: 'Server error' });
