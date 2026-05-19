@@ -72,59 +72,46 @@ export const analyzeUrl = async (req, res) => {
             lastAnalysisDate: new Date(),
         });
 
-        res.status(202).json({ success: true, message: "Analysis started", analysisId: analysis._id });
+        // Step 1: Scrape the URL with BrowserBase
+        const scrapeResult = await scrapeUrl(validUrl.href);
 
-        // Run scraping and analysis in background
-        try {
-            // Step 1: Scrape the URL with BrowserBase
-            const scrapeResult = await scrapeUrl(validUrl.href);
-            
-            if (!scrapeResult || !scrapeResult.success) {
-                console.error("[ANALYSIS] Scrape failed:", scrapeResult?.error);
-                analysis.status = 'failed';
-                await analysis.save();
-                return;
-            }
-
-            // Step 2: Analyze with Gemini AI
-            const aiResult = await analyzeSeoData(scrapeResult.data);
-
-            if (!aiResult.success) {
-                console.error("[ANALYSIS] AI failed:", aiResult.error);
-                analysis.status = 'failed';
-                await analysis.save();
-                return;
-            }
-
-            // Step 3: Save results to database
-            analysis.overallScore = aiResult.data.overallScore || 0;
-            analysis.categories = aiResult.data.categories || {};
-            analysis.metaData = scrapeResult.data.metaData || {};
-            analysis.headings = scrapeResult.data.headings || {};
-            analysis.links = scrapeResult.data.links || {};
-            analysis.images = scrapeResult.data.images || {};
-            analysis.keywords = aiResult.data.keywords || [];
-            analysis.issues = aiResult.data.issues || [];
-            analysis.loadTime = scrapeResult.data.loadTime || 0;
-            analysis.pageSize = scrapeResult.data.pageSize || 0;
-            analysis.wordCount = scrapeResult.data.wordCount || 0;
-            analysis.coreWebVitals = scrapeResult.data.coreWebVitals || {};
-            analysis.mobileFriendliness = scrapeResult.data.mobileFriendliness || {};
-            analysis.robotsTxt = scrapeResult.data.robotsTxt || {};
-            analysis.structuredData = scrapeResult.data.structuredData || [];
-            analysis.status = 'completed';
-
+        if (!scrapeResult || !scrapeResult.success) {
+            analysis.status = 'failed';
             await analysis.save();
-
-        } catch (bgError) {
-            console.error("Background Analysis Error:", bgError.message);
-            try {
-                analysis.status = 'failed';
-                await analysis.save();
-            } catch (saveError) {
-                console.error("Failed to update analysis status:", saveError.message);
-            }
+            return res.status(422).json({ success: false, message: 'Failed to access the website. It may be blocking our crawler.' });
         }
+
+        // Step 2: Analyze with Gemini AI
+        const aiResult = await analyzeSeoData(scrapeResult.data);
+
+        if (!aiResult.success) {
+            analysis.status = 'failed';
+            await analysis.save();
+            return res.status(422).json({ success: false, message: 'AI analysis failed. Please try again.' });
+        }
+
+        // Step 3: Save results to database
+        analysis.overallScore = aiResult.data.overallScore || 0;
+        analysis.categories = aiResult.data.categories || {};
+        analysis.metaData = scrapeResult.data.metaData || {};
+        analysis.headings = scrapeResult.data.headings || {};
+        analysis.links = scrapeResult.data.links || {};
+        analysis.images = scrapeResult.data.images || {};
+        analysis.keywords = aiResult.data.keywords || [];
+        analysis.issues = aiResult.data.issues || [];
+        analysis.loadTime = scrapeResult.data.loadTime || 0;
+        analysis.pageSize = scrapeResult.data.pageSize || 0;
+        analysis.wordCount = scrapeResult.data.wordCount || 0;
+        analysis.coreWebVitals = scrapeResult.data.coreWebVitals || {};
+        analysis.mobileFriendliness = scrapeResult.data.mobileFriendliness || {};
+        analysis.robotsTxt = scrapeResult.data.robotsTxt || {};
+        analysis.structuredData = scrapeResult.data.structuredData || [];
+        analysis.status = 'completed';
+
+        await analysis.save();
+
+        res.status(200).json({ success: true, message: "Analysis complete", analysisId: analysis._id });
+
     } catch (error) {
         console.error("Analyze URL Error:", error.message);
         if (!res.headersSent) {

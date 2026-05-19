@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { SearchIcon, GlobeIcon, FileSearchIcon, BrainIcon, CheckCircleIcon, AlertCircle, Loader2, ArrowRightIcon } from "lucide-react";
 import { useApp } from "../context/AppContext";
@@ -21,7 +21,6 @@ export default function Analyze() {
     const [currentStep, setCurrentStep] = useState(0);
     const [error, setError] = useState("");
     const [searchParams] = useSearchParams();
-    const pollRef = useRef<any>(null);
 
     const navigate = useNavigate();
 
@@ -34,60 +33,21 @@ export default function Analyze() {
         setCurrentStep(0);
 
         try {
-            // Step 0: Connecting
-            setCurrentStep(0);
-            const res = await api.post('/api/analysis/analyze', { 
-                url: targetUrl.startsWith('http') ? targetUrl : `https://${targetUrl}`, 
+            const res = await api.post('/api/analysis/analyze', {
+                url: targetUrl.startsWith('http') ? targetUrl : `https://${targetUrl}`,
             });
 
-            if(!res.data.success) {
-                throw new Error(res.data.message || "Failed to start analysis");
+            if (!res.data.success) {
+                throw new Error(res.data.message || "Failed to analyze");
             }
 
             const id = res.data.analysisId;
-
-            // Step 1: Scanning
             setCurrentStep(1);
-
-            // Poll for completion with exponential backoff: 2s → 4s → 8s → capped at 15s
-            let attempts = 0;
-            const maxAttempts = 20; // ~2 min total (2+4+8+15*17)
-            let delay = 2000;
-
-            const schedulePoll = () => {
-                pollRef.current = setTimeout(async () => {
-                    attempts++;
-                    if (attempts > maxAttempts) {
-                        setAnalyzing(false);
-                        setError("Analysis timed out. Please try again.");
-                        return;
-                    }
-
-                    try {
-                        const check = await api.get(`/api/analysis/${id}`);
-                        const analysis = check.data.analysis;
-
-                        if (analysis.status === "completed") {
-                            setCurrentStep(3);
-                            setTimeout(() => navigate(`/report/${id}`), 1000);
-                        } else if (analysis.status === "failed") {
-                            setAnalyzing(false);
-                            setError("Analysis failed. The website may be blocking our crawler or there was an issue during processing.");
-                        } else {
-                            // Still processing — advance visual step, then re-schedule
-                            if (attempts > 3) setCurrentStep(2);
-                            delay = Math.min(delay * 1.5, 15000);
-                            schedulePoll();
-                        }
-                    } catch {
-                        // Ignore transient polling errors, keep going
-                        delay = Math.min(delay * 1.5, 15000);
-                        schedulePoll();
-                    }
-                }, delay);
-            };
-
-            schedulePoll();
+            await new Promise(r => setTimeout(r, 400));
+            setCurrentStep(2);
+            await new Promise(r => setTimeout(r, 400));
+            setCurrentStep(3);
+            setTimeout(() => navigate(`/report/${id}`), 1000);
         } catch (err: any) {
             setError(err.response?.data?.message || err.message || "Failed to start analysis. Please check the URL and try again.");
             setAnalyzing(false);
@@ -107,9 +67,7 @@ export default function Analyze() {
             setTimeout(() => handleAnalyze(prefillUrl), 500);
         }
 
-        return () => {
-            if (pollRef.current) clearTimeout(pollRef.current);
-        };
+        return () => {};
     }, []);
 
     return (
