@@ -31,15 +31,14 @@ export async function rankTracker(keyword, targetDomain) {
         const cleanTarget = targetDomain.replace("www.", '').toLowerCase();
 
         // 3. Search Loop: Iterate through up to 5 pages of Google results
-        for(let gPage = 0; gPage < 5; gPage++) {
+        for(let gPage = 0; gPage < 3; gPage++) {
             await page.goto(`https://www.google.com/search?q=${encodeURIComponent(keyword)}&start=${gPage * 10}&num=10&hl=en&gl=us`, { waitUntil: "domcontentloaded" });
 
             // 4. Page Extraction: Retry up to 3 times if results are missing
             let pageResults = [];
             for (let retry = 0; retry < 3; retry++) {
                 try {
-                    await page.waitForSelector('h3', { timeout: 8000 });
-                    await page.waitForTimeout(1500);
+                    await page.waitForSelector('h3', { timeout: 5000 });
                     pageResults = await page.evaluate(() => Array.from(document.querySelectorAll('h3')).map((h3) => {
                         let a = h3.closest('a');
                         if (!a) {
@@ -70,10 +69,10 @@ export async function rankTracker(keyword, targetDomain) {
                     }).filter(Boolean));
                     
                     if(pageResults.length > 0) break; // If we got results, no need to retry
-                    await page.reload({ waitUntil: "networkidle" });
+                    await page.reload({ waitUntil: "domcontentloaded" });
                 } catch (err) {
                     if(retry === 2) break;
-                    await page.reload({ waitUntil: "networkidle" });
+                    await page.reload({ waitUntil: "domcontentloaded" });
                 }
             }
             if(!pageResults.length) break;
@@ -87,7 +86,7 @@ export async function rankTracker(keyword, targetDomain) {
                 }
             }
             if(found) break; // If we found the target, stop searching further pages
-            await page.waitForTimeout(2000 + Math.random() * 2000); // Wait before navigating to next page
+            await page.waitForTimeout(500 + Math.random() * 500); // Wait before navigating to next page
         }
 
         // 6. Finalize: Close browser and extract competitors
