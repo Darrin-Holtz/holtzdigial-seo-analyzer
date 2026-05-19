@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Target, Plus, RefreshCw, Trash2, TrendingUp, TrendingDown, Minus, ExternalLink, Clock, Loader2, X, Search, Globe, AlertCircle, Eye, EyeOff, Filter, ArrowUpDown } from "lucide-react";
 import { useApp } from "../context/AppContext";
@@ -35,7 +35,6 @@ export default function RankTracker() {
     const [searchQuery, setSearchQuery] = useState("");
     const [statusFilter, setStatusFilter] = useState("all");
     const [sortBy, setSortBy] = useState("newest");
-    const pollIntervalsRef = useRef<ReturnType<typeof setInterval>[]>([]);
 
     const fetchKeywords = async () => {
         try {
@@ -65,37 +64,6 @@ export default function RankTracker() {
                 setNewKeyword("");
                 setNewUrl("");
                 setShowAddModal(false);
-
-                // Poll for completion with exponential backoff: 3s → 6s → 12s → capped at 20s
-                const id = res.data.tracking._id;
-                let pollDelay = 3000;
-                let pollErrors = 0;
-                const MAX_POLL_ERRORS = 5;
-
-                const schedulePollAdd = () => {
-                    const t = setTimeout(async () => {
-                        pollIntervalsRef.current = pollIntervalsRef.current.filter((x) => x !== t);
-                        try {
-                            const check = await api.get(`/api/rank/${id}`);
-                            if (check.data.tracking.status !== "checking") {
-                                setKeywords((prev) => prev.map((k) => (k._id === id ? check.data.tracking : k)));
-                            } else {
-                                pollDelay = Math.min(pollDelay * 2, 20000);
-                                const next = schedulePollAdd();
-                                if (next) pollIntervalsRef.current.push(next);
-                            }
-                        } catch {
-                            if (++pollErrors < MAX_POLL_ERRORS) {
-                                pollDelay = Math.min(pollDelay * 2, 20000);
-                                const next = schedulePollAdd();
-                                if (next) pollIntervalsRef.current.push(next);
-                            }
-                        }
-                    }, pollDelay) as unknown as ReturnType<typeof setInterval>;
-                    return t;
-                };
-                const first = schedulePollAdd();
-                if (first) pollIntervalsRef.current.push(first);
             }
         } catch (err: any) {
             setAddError("An error occurred while adding the keyword.");
@@ -107,43 +75,18 @@ export default function RankTracker() {
     const handleRefresh = async (id: string) => {
         setRefreshing(id);
         try {
-            await api.post(`/api/rank/${id}/refresh`);
-            setKeywords((prev) => prev.map((k) => (k._id === id ? { ...k, status: "checking" } : k)));
-
-            // Poll for completion with exponential backoff
-            let refreshDelay = 3000;
-            let refreshErrors = 0;
-            const MAX_REFRESH_ERRORS = 5;
-
-            const schedulePollRefresh = () => {
-                const t = setTimeout(async () => {
-                    pollIntervalsRef.current = pollIntervalsRef.current.filter((x) => x !== t);
-                    try {
-                        const check = await api.get(`/api/rank/${id}`);
-                        if (check.data.tracking.status !== "checking") {
-                            setKeywords((prev) => prev.map((k) => (k._id === id ? check.data.tracking : k)));
-                            setRefreshing(null);
-                        } else {
-                            refreshDelay = Math.min(refreshDelay * 2, 20000);
-                            const next = schedulePollRefresh();
-                            if (next) pollIntervalsRef.current.push(next);
-                        }
-                    } catch {
-                        if (++refreshErrors < MAX_REFRESH_ERRORS) {
-                            refreshDelay = Math.min(refreshDelay * 2, 20000);
-                            const next = schedulePollRefresh();
-                            if (next) pollIntervalsRef.current.push(next);
-                        } else {
-                            setRefreshing(null);
-                        }
-                    }
-                }, refreshDelay) as unknown as ReturnType<typeof setInterval>;
-                return t;
-            };
-            const first = schedulePollRefresh();
-            if (first) pollIntervalsRef.current.push(first);
+            const res = await api.post(`/api/rank/${id}/refresh`);
+            if (res.data.tracking) {
+                setKeywords((prev) => prev.map((k) => (k._id === id ? res.data.tracking : k)));
+            } else {
+                const check = await api.get(`/api/rank/${id}`);
+                if (check.data.success) {
+                    setKeywords((prev) => prev.map((k) => (k._id === id ? check.data.tracking : k)));
+                }
+            }
         } catch (err) {
             console.error("Failed to refresh ranking:", err);
+        } finally {
             setRefreshing(null);
         }
     };
@@ -215,9 +158,6 @@ export default function RankTracker() {
 
     useEffect(() => {
         (async () => await fetchKeywords())();
-        return () => {
-            pollIntervalsRef.current.forEach(clearTimeout);
-        };
     }, []);
 
     return (

@@ -13,10 +13,10 @@ export async function rankTracker(keyword, targetDomain) {
         const session = await bb.sessions.create({browserSettings: {blockAds: true}});
         browser = await chromium.connectOverCDP(session.connectUrl);
         const page = browser.contexts()[0].pages()[0];
-        page.setDefaultNavigationTimeout(45000); // 45 seconds
+        page.setDefaultNavigationTimeout(25000); // 25 seconds
 
         // 2. Initialize Google Visit & Consent Handling
-        await page.goto("https://www.google.com", { waitUntil: "networkidle" });
+        await page.goto("https://www.google.com", { waitUntil: "domcontentloaded" });
         try{
             const btn = await page.$('button[id="L2AGLb"], form[action*="consent"] button');
             if (btn) {
@@ -32,7 +32,7 @@ export async function rankTracker(keyword, targetDomain) {
 
         // 3. Search Loop: Iterate through up to 5 pages of Google results
         for(let gPage = 0; gPage < 5; gPage++) {
-            await page.goto(`https://www.google.com/search?q=${encodeURIComponent(keyword)}&start=${gPage * 10}&num=10&hl=en&gl=us`, { waitUntil: "networkidle" });
+            await page.goto(`https://www.google.com/search?q=${encodeURIComponent(keyword)}&start=${gPage * 10}&num=10&hl=en&gl=us`, { waitUntil: "domcontentloaded" });
 
             // 4. Page Extraction: Retry up to 3 times if results are missing
             let pageResults = [];
