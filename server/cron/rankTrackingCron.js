@@ -1,6 +1,7 @@
 import cron from "node-cron";
 import KeywordTracking from "../models/keywordTracking.js";
 import Analysis from "../models/Analysis.js";
+import User from "../models/User.js";
 import { keywordTracking } from "../services/keywordTrackingService.js";
 
 // Concurrency lock: prevent overlapping runs if a job takes longer than 24h
@@ -53,4 +54,23 @@ export function startRankTrackingCron() {
     });
 
     console.log("[CRON] Rank tracking scheduled at 6:00 AM daily. Stale cleanup runs every 10 minutes.");
+
+    // Reset free-plan analysis counts at midnight
+    cron.schedule('0 0 * * *', async () => {
+        try {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const result = await User.updateMany(
+                { plan: 'free', lastAnalysisDate: { $lt: today } },
+                { $set: { analysisCount: 0 } }
+            );
+            if (result.modifiedCount > 0) {
+                console.log(`[CRON] Reset analysis counts for ${result.modifiedCount} free-plan user(s).`);
+            }
+        } catch (error) {
+            console.error("[CRON] Analysis count reset error:", error.message);
+        }
+    });
+
+    console.log("[CRON] Analysis count reset scheduled at midnight daily.");
 }

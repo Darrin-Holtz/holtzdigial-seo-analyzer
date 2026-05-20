@@ -9,6 +9,7 @@ import authRouter from './routes/authRoutes.js';
 import rankRouter from './routes/rankRoutes.js';
 import analysisRouter from './routes/analysisRoutes.js';
 import cronRouter from './routes/cronRoutes.js';
+import { startRankTrackingCron } from './cron/rankTrackingCron.js';
 
 // Validate required environment variables at startup
 const REQUIRED_ENV = ['MONGODB_URI', 'JWT_SECRET', 'GEMINI_API_KEY', 'BROWSERBASE_API_KEY'];
@@ -21,6 +22,11 @@ if (missingEnv.length > 0) {
 connectDB();
 
 const app = express();
+
+// Start background cron jobs (local/long-running server only; Vercel uses HTTP cron routes)
+if (process.env.NODE_ENV !== 'production') {
+    startRankTrackingCron();
+}
 
 const allowedOrigins = process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())

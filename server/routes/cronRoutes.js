@@ -1,5 +1,6 @@
 import express from 'express';
 import KeywordTracking from '../models/keywordTracking.js';
+import User from '../models/User.js';
 import { keywordTracking } from '../services/keywordTrackingService.js';
 
 const cronRouter = express.Router();
@@ -20,14 +21,25 @@ function verifyCronSecret(req, res) {
 }
 
 // POST /api/cron/rank-tracking
-// Called daily by Vercel Crons at 6:00 AM ET
+// Called by Vercel Crons. Handles rank tracking AND analysis count reset
+// so both fit within the single cron job allowed on Vercel's free tier.
 cronRouter.post('/rank-tracking', async (req, res) => {
     if (!verifyCronSecret(req, res)) return;
 
-    res.json({ success: true, message: 'Rank tracking started' });
+    res.json({ success: true, message: 'Rank tracking and analysis count reset started' });
 
     // Continue processing after response is sent
     try {
+        // 1. Reset free-plan analysis counts for users whose last analysis was before today
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const resetResult = await User.updateMany(
+            { plan: 'free', lastAnalysisDate: { $lt: today } },
+            { $set: { analysisCount: 0 } }
+        );
+        console.log(`[CRON] Reset analysis counts for ${resetResult.modifiedCount} free-plan user(s).`);
+
+        // 2. Run keyword rank tracking
         console.log('[CRON] Starting daily rank tracking...');
         const activeTrackings = await KeywordTracking.find({ active: true });
 
@@ -42,6 +54,27 @@ cronRouter.post('/rank-tracking', async (req, res) => {
         console.log('[CRON] Daily rank tracking complete.');
     } catch (error) {
         console.error('[CRON] Rank tracking error:', error.message);
+    }
+});
+
+// POST /api/cron/reset-analysis-counts
+// Called daily by Vercel Crons at midnight UTC to reset free-plan usage counters
+cronRouter.post('/reset-analysis-counts', async (req, res) => {
+    if (!verifyCronSecret(req, res)) return;
+
+    res.json({ success: true, message: 'Analysis count reset started' });
+
+    try {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const result = await User.updateMany(
+            { plan: 'free', lastAnalysisDate: { $lt: today } },
+            { $set: { analysisCount: 0 } }
+        );
+        console.log(`[CRON] Reset analysis counts for ${result.modifiedCount} user(s).`);
+    } catch (error) {
+        console.error('[CRON] Reset analysis counts error:', error.message);
     }
 });
 

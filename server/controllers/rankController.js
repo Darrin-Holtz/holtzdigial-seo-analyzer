@@ -31,8 +31,13 @@ export const addKeyword = async (req, res) => {
             status: 'checking',
         });
 
-        await keywordTracking(tracking);
+        // Respond immediately — scraping takes 30-60 s and would timeout the request
         res.status(201).json({ success: true, message: "Keyword tracking started", tracking });
+
+        // Run rank check in the background
+        keywordTracking(tracking).catch((err) =>
+            console.error(`[BG] Failed to track keyword "${tracking.keyword}":`, err.message)
+        );
     } catch (error) {
         console.error("Add Keyword Error:", error.message);
         if (error.code === 11000) {
@@ -72,8 +77,14 @@ export const refreshKeyword = async (req, res) => {
         if (!tracking) return res.status(404).json({ success: false, message: 'Keyword tracking not found' });
         tracking.status = 'checking';
         await tracking.save();
-        await keywordTracking(tracking);
-        res.json({ success: true, message: 'Keyword refresh completed', tracking });
+
+        // Respond immediately with the 'checking' state
+        res.json({ success: true, message: 'Keyword refresh started', tracking });
+
+        // Run rank check in the background
+        keywordTracking(tracking).catch((err) =>
+            console.error(`[BG] Failed to refresh keyword "${tracking.keyword}":`, err.message)
+        );
     } catch (error) {
         console.error("Refresh Keyword Error:", error.message);
         res.status(500).json({ success: false, message: 'Server error' });
