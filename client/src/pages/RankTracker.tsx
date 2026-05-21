@@ -160,6 +160,29 @@ export default function RankTracker() {
         (async () => await fetchKeywords())();
     }, []);
 
+    // Poll every 6 seconds while any keyword is still in 'checking' state
+    useEffect(() => {
+        const hasChecking = keywords.some((k) => k.status === "checking");
+        if (!hasChecking) return;
+
+        const interval = setInterval(async () => {
+            const checkingIds = keywords.filter((k) => k.status === "checking").map((k) => k._id);
+            const updates = await Promise.allSettled(checkingIds.map((id) => api.get(`/api/rank/${id}`)));
+            setKeywords((prev) => {
+                const next = [...prev];
+                updates.forEach((result, i) => {
+                    if (result.status === "fulfilled" && result.value.data.success) {
+                        const idx = next.findIndex((k) => k._id === checkingIds[i]);
+                        if (idx !== -1) next[idx] = result.value.data.tracking;
+                    }
+                });
+                return next;
+            });
+        }, 6000);
+
+        return () => clearInterval(interval);
+    }, [keywords]);
+
     return (
         <div className="min-h-scree pt-16 md:pt-24 bg-background">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
