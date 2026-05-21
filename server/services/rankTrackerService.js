@@ -18,7 +18,7 @@ export async function rankTracker(keyword, targetDomain) {
         // 2. Initialize Google Visit & Consent Handling
         await page.goto("https://www.google.com", { waitUntil: "domcontentloaded" });
         try{
-            const btn = await page.$('button[id="L2AGLb"], form[action*="consent"] button');
+            const btn = await page.$('button[id="L2AGLb"], button[id="W0wltc"], form[action*="consent"] button');
             if (btn) {
                 await btn.click();
                 await page.waitForTimeout(1500); // Wait for consent to process
@@ -38,55 +38,62 @@ export async function rankTracker(keyword, targetDomain) {
             let pageResults = [];
             for (let retry = 0; retry < 3; retry++) {
                 try {
-                    await page.waitForSelector('h3', { timeout: 5000 });
-                    pageResults = await page.evaluate(() => Array.from(document.querySelectorAll('h3')).map((h3) => {
-                        let a = h3.closest('a');
-                        if (!a) {
-                            let p = h3.parentElement;
-                            for(let j = 0; j < 8 && p; j++, p = p.parentElement) {
-                                if(p.tagName === 'A') {
-                                    a = p;
-                                    break;
-                                }
-                                const sub = p.querySelector('a[href]');
-                                if(sub && sub.contains(h3)) {
-                                    a = sub;
-                                    break;
+                    // Wait for any h3 — present in both organic results and SERP features
+                    await page.waitForSelector('a[href] h3', { timeout: 8000 });
+                    pageResults = await page.evaluate(() => {
+                        const seen = new Set();
+                        // Strategy: find every <a> that directly contains an <h3> — this is how
+                        // Google wraps organic result titles in its current DOM structure.
+                        return Array.from(document.querySelectorAll('a[href]')).flatMap((a) => {
+                            const h3 = a.querySelector('h3');
+                            if (!h3 || !h3.innerText.trim()) return [];
+
+                            // Unwrap Google redirect URLs (e.g. /url?q=https://example.com&...)
+                            let href = a.href;
+                            if (href.includes('/url?q=')) {
+                                try { href = new URL(href).searchParams.get('q') || href; } catch {}
+                            }
+                            if (!href.startsWith('http')) return [];
+
+                            let hostname;
+                            try { hostname = new URL(href).hostname; } catch { return []; }
+                            // Drop Google-internal links
+                            if (hostname.endsWith('google.com') || hostname.endsWith('google.co.uk') ||
+                                hostname.startsWith('google.') || href.includes('google.com/search')) return [];
+
+                            // Deduplicate by URL
+                            if (seen.has(href)) return [];
+                            seen.add(href);
+
+                            const domain = hostname.replace(/^www\./, '').toLowerCase();
+
+                            // Extract snippet: walk up from the anchor to find a block with enough text
+                            let snippet = '';
+                            let c = a.parentElement;
+                            for (let j = 0; j < 8 && c; j++, c = c.parentElement) {
+                                const txt = (c.innerText || '').trim();
+                                if (txt.length > h3.innerText.length + 50) {
+                                    const line = txt.split('\n').find(
+                                        (l) => l.length > 30 && !l.includes(h3.innerText.substring(0, 20))
+                                    );
+                                    if (line) { snippet = line.trim().substring(0, 300); break; }
                                 }
                             }
-                        }
-                        if (!a) return null;
 
-                        // Resolve Google redirect URLs (e.g. /url?q=https://...) before filtering
-                        let href = a.href;
-                        if (href.includes('/url?q=')) {
-                            try { href = new URL(href).searchParams.get('q') || href; } catch {}
-                        }
-                        if (!href.startsWith('http') || href.includes('google.com/search') || href.includes('google.com/url')) return null;
-
-                        let domain;
-                        try { domain = new URL(href).hostname.replace('www.', '').toLowerCase(); } catch { return null; }
-                        if (!domain || domain.startsWith('google.')) return null;
-
-                        let s = "";
-                        let c = a.parentElement;
-                        for(let j = 0; j < 6 && c; j++, c = c.parentElement) {
-                            const txt = c.innerText || "";
-                            if(txt.length > h3.innerText.length + 50) {
-                                s = (txt.split("\n").find((l) => l.length > 30 && !l.includes(h3.innerText.substring(0, 20))) || "").trim().substring(0, 300);
-                                if(s) break;
-                            }
-                        }
-                        return { url: href, domain, title: h3.innerText.trim(), snippet: s };
-                    }).filter(Boolean));
+                            return [{ url: href, domain, title: h3.innerText.trim(), snippet }];
+                        }).filter((r) => r && r.domain);
+                    });
                     
                     if(pageResults.length > 0) break; // If we got results, no need to retry
+                    console.warn(`[RankTracker] Page ${gPage + 1} retry ${retry + 1}: 0 results, reloading...`);
                     await page.reload({ waitUntil: "domcontentloaded" });
                 } catch (err) {
+                    console.warn(`[RankTracker] Page ${gPage + 1} retry ${retry + 1} selector error: ${err.message}`);
                     if(retry === 2) break;
                     await page.reload({ waitUntil: "domcontentloaded" });
                 }
             }
+            console.log(`[RankTracker] Page ${gPage + 1}: extracted ${pageResults.length} results (total so far: ${allResults.length + pageResults.length})`);
             if(!pageResults.length) break;
 
             // 5. Result Synthesis: Update global results and check for target match
@@ -104,6 +111,7 @@ export async function rankTracker(keyword, targetDomain) {
 
         // 6. Finalize: Close browser and extract competitors
         await browser.close();
+        console.log(`[RankTracker] Done. keyword="${keyword}" domain="${cleanTarget}" totalScanned=${allResults.length} position=${found?.position ?? 'not found'}`);
         const competitors = allResults.filter((r) => r.domain !== cleanTarget).slice(0, 10);
         return {
             success: true,
