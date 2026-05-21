@@ -12,7 +12,7 @@ import cronRouter from './routes/cronRoutes.js';
 import { startRankTrackingCron } from './cron/rankTrackingCron.js';
 
 // Validate required environment variables at startup
-const REQUIRED_ENV = ['MONGODB_URI', 'JWT_SECRET', 'GEMINI_API_KEY', 'BROWSERBASE_API_KEY'];
+const REQUIRED_ENV = ['MONGODB_URI', 'JWT_SECRET', 'GEMINI_API_KEY', 'SERPAPI_KEY'];
 const missingEnv = REQUIRED_ENV.filter((key) => !process.env[key]);
 if (missingEnv.length > 0) {
     console.error(`[STARTUP] Missing required environment variables: ${missingEnv.join(', ')}`);
