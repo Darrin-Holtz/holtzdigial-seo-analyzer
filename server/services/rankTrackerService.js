@@ -43,7 +43,7 @@ export async function rankTracker(keyword, targetDomain) {
                         let a = h3.closest('a');
                         if (!a) {
                             let p = h3.parentElement;
-                            for(let j = 0; j < 5 && p; j++, p = p.parentElement) {
+                            for(let j = 0; j < 8 && p; j++, p = p.parentElement) {
                                 if(p.tagName === 'A') {
                                     a = p;
                                     break;
@@ -55,17 +55,29 @@ export async function rankTracker(keyword, targetDomain) {
                                 }
                             }
                         }
-                        if(!a || !a.href.startsWith("http") || a.href.includes("google.")) return null;
-                        let s = "",
-                        c = a.parentElement;
-                        for(let j = 0; j < 6 && j++; c = c.parentElement) {
+                        if (!a) return null;
+
+                        // Resolve Google redirect URLs (e.g. /url?q=https://...) before filtering
+                        let href = a.href;
+                        if (href.includes('/url?q=')) {
+                            try { href = new URL(href).searchParams.get('q') || href; } catch {}
+                        }
+                        if (!href.startsWith('http') || href.includes('google.com/search') || href.includes('google.com/url')) return null;
+
+                        let domain;
+                        try { domain = new URL(href).hostname.replace('www.', '').toLowerCase(); } catch { return null; }
+                        if (!domain || domain.startsWith('google.')) return null;
+
+                        let s = "";
+                        let c = a.parentElement;
+                        for(let j = 0; j < 6 && c; j++, c = c.parentElement) {
                             const txt = c.innerText || "";
                             if(txt.length > h3.innerText.length + 50) {
                                 s = (txt.split("\n").find((l) => l.length > 30 && !l.includes(h3.innerText.substring(0, 20))) || "").trim().substring(0, 300);
                                 if(s) break;
                             }
                         }
-                        return {url: a.href, domain: new URL(a.href).hostname.replace('www.', ''), title: h3.innerText.trim(), snippet: s};
+                        return { url: href, domain, title: h3.innerText.trim(), snippet: s };
                     }).filter(Boolean));
                     
                     if(pageResults.length > 0) break; // If we got results, no need to retry
@@ -81,7 +93,8 @@ export async function rankTracker(keyword, targetDomain) {
             for (const r of pageResults) {
                 r.position = allResults.length + 1;
                 allResults.push(r);
-                if (!found && (r.domain.toLowerCase().includes(cleanTarget) || cleanTarget.includes(r.domain.toLowerCase()))) {
+                // Exact domain match (after www-strip) to avoid false positives with subdomains
+                if (!found && r.domain === cleanTarget) {
                     found = {...r, page: gPage + 1};
                 }
             }
@@ -91,7 +104,7 @@ export async function rankTracker(keyword, targetDomain) {
 
         // 6. Finalize: Close browser and extract competitors
         await browser.close();
-        const competitors = allResults.filter((r) => !r.domain.toLowerCase().includes(cleanTarget) && !cleanTarget.includes(r.domain.toLowerCase())).slice(0, 10);
+        const competitors = allResults.filter((r) => r.domain !== cleanTarget).slice(0, 10);
         return {
             success: true,
             data: {
