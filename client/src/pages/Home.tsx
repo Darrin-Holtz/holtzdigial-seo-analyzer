@@ -8,12 +8,12 @@ import Footer from "../components/home/Footer";
 export default function Home() {
     useEffect(() => { document.title = "Rank Pilot — AI SEO Analyzer"; }, []);
     return (
-        <div className="min-h-screen">
+        <main className="min-h-screen">
             <Hero />
             <Features />
             <HowItWorks />
             <Pricing />
             <Footer />
-        </div>
+        </main>
     );
 }
