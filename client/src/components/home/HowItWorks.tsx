@@ -18,7 +18,7 @@ export default function HowItWorks() {
                 {homeHowItWorksData.map((step: any, i: number) => (
                     <div key={step.num} className="relative z-10 animate-slide-up" style={{ animationDelay: `${i * 100}ms` }}>
                         <div className="bg-card border border-border rounded-2xl p-8 text-center h-full hover:bg-muted transition-all group/step">
-                            <div className="text-5xl font-bold text-primary/10 mb-4 group-hover/step:text-primary/20 transition-colors">{step.num}</div>
+                            <div aria-hidden="true" className="text-5xl font-bold text-primary/10 mb-4 group-hover/step:text-primary/20 transition-colors">{step.num}</div>
                             <div className="size-14 rounded-xl flex items-center justify-center mx-auto mb-5 text-primary/80 border border-primary/20 bg-muted/40 group-hover/step:border-primary/40 transition-all">{step.icon}</div>
                             <h3 className=" mb-2 text-foreground">{step.title}</h3>
                             <p className="text-sm text-muted-foreground">{step.desc}</p>
