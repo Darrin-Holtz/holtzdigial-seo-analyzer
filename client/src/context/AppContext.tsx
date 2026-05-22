@@ -32,13 +32,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const loadUser = async () => {
         try {
-            // Consume the pre-fetch started in index.html's inline script.
-            // By the time React mounts (~1.3 s), the response is already in-flight
-            // or fully resolved, so setLoading(false) fires with minimal delay.
-            const w = window as { __af?: Promise<Response> };
-            const earlyFetch = w.__af;
-            if (earlyFetch !== undefined) delete w.__af;
-            const res = await (earlyFetch ?? fetch(`${BACKEND_URL}/api/auth/user`, { credentials: "include" }));
+            const res = await fetch(`${BACKEND_URL}/api/auth/user`, { credentials: "include" });
             const data = await res.json();
             setUser(data.success ? data.user : null);
         } catch {
