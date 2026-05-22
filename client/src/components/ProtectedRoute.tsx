@@ -1,5 +1,7 @@
+import { Suspense } from "react";
 import { Navigate, Outlet } from "react-router-dom";
 import { useApp } from "../context/AppContext";
+import Loading from "./Loading";
 
 export default function ProtectedRoute() {
     const { user, loading } = useApp();
@@ -14,5 +16,11 @@ export default function ProtectedRoute() {
     if (!user) {
         return <Navigate to="/login" replace />;
     }
-    return <Outlet />;
+    // Suspense here (not in App.tsx) ensures lazy page chunks never bubble up
+    // to a boundary that could block the home-page initial render.
+    return (
+        <Suspense fallback={<Loading />}>
+            <Outlet />
+        </Suspense>
+    );
 }

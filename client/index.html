@@ -71,6 +71,13 @@
       }
     }
     </script>
+    <!-- Start the auth-check fetch immediately during HTML parsing, before React
+         loads. %VITE_BACKEND_URL% is replaced by Vite at build time (empty in
+         dev → proxied to /api; full URL in production). The Promise is consumed
+         by AppContext so setLoading(false) fires at React mount instead of
+         ~800ms later. This also "uses" the preconnect so Chrome’s LCP
+         critical path no longer includes a new TCP+TLS handshake. -->
+    <script>try{window.__af=fetch('%VITE_BACKEND_URL%/api/auth/user',{credentials:'include'});}catch(_){}</script>
   </head>
   <body>
     <div id="root"></div>

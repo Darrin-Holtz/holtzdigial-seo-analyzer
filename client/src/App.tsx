@@ -31,21 +31,22 @@ export default function App() {
                 <Toaster />
             </Suspense>
             {!hideNavbar && <Navbar />}
-            <Suspense fallback={<Loading />}>
-                <Routes>
-                    <Route path="/" element={<Home />} />
-                    <Route path="/login" element={loading ? <Loading /> : (user ? <Navigate to="/dashboard" replace /> : <Login state="login" />)} />
-                    <Route path="/register" element={loading ? <Loading /> : (user ? <Navigate to="/dashboard" replace /> : <Login state="register" />)} />
-                    <Route element={<ProtectedRoute />}>
-                        <Route path="/dashboard" element={<Dashboard />} />
-                        <Route path="/analyze" element={<Analyze />} />
-                        <Route path="/report/:id" element={<Report />} />
-                        <Route path="/history" element={<History />} />
-                        <Route path="/rank-tracker" element={<RankTracker />} />
-                        <Route path="/rank/:id" element={<RankDetail />} />
-                    </Route>
-                </Routes>
-            </Suspense>
+            {/* No outer Suspense around Routes — the home route must commit
+                the H1 immediately so LCP = FCP. Each lazy boundary has its
+                own <Suspense> below. */}
+            <Routes>
+                <Route path="/" element={<Home />} />
+                <Route path="/login" element={loading ? <Loading /> : (user ? <Navigate to="/dashboard" replace /> : <Suspense fallback={<Loading />}><Login state="login" /></Suspense>)} />
+                <Route path="/register" element={loading ? <Loading /> : (user ? <Navigate to="/dashboard" replace /> : <Suspense fallback={<Loading />}><Login state="register" /></Suspense>)} />
+                <Route element={<ProtectedRoute />}>
+                    <Route path="/dashboard" element={<Dashboard />} />
+                    <Route path="/analyze" element={<Analyze />} />
+                    <Route path="/report/:id" element={<Report />} />
+                    <Route path="/history" element={<History />} />
+                    <Route path="/rank-tracker" element={<RankTracker />} />
+                    <Route path="/rank/:id" element={<RankDetail />} />
+                </Route>
+            </Routes>
         </>
     );
 }
