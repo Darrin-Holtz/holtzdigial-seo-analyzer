@@ -20,10 +20,12 @@ function verifyCronSecret(req, res) {
     return true;
 }
 
-// POST /api/cron/rank-tracking
-// Called by Vercel Crons. Handles rank tracking AND analysis count reset
-// so both fit within the single cron job allowed on Vercel's free tier.
-cronRouter.post('/rank-tracking', async (req, res) => {
+// GET /api/cron/rank-tracking
+// Called daily by Vercel Crons. Vercel Cron Jobs ONLY send GET requests —
+// defining this as POST silently fails (404), so it must stay GET.
+// Handles rank tracking AND analysis count reset so both fit within the
+// single cron job allowed on Vercel's free tier.
+cronRouter.get('/rank-tracking', async (req, res) => {
     if (!verifyCronSecret(req, res)) return;
 
     res.json({ success: true, message: 'Rank tracking and analysis count reset started' });
@@ -57,9 +59,10 @@ cronRouter.post('/rank-tracking', async (req, res) => {
     }
 });
 
-// POST /api/cron/reset-analysis-counts
-// Called daily by Vercel Crons at midnight UTC to reset free-plan usage counters
-cronRouter.post('/reset-analysis-counts', async (req, res) => {
+// GET /api/cron/reset-analysis-counts
+// Standalone reset endpoint (kept for manual invocation/testing). Vercel
+// Cron Jobs only send GET requests, so this must stay GET.
+cronRouter.get('/reset-analysis-counts', async (req, res) => {
     if (!verifyCronSecret(req, res)) return;
 
     res.json({ success: true, message: 'Analysis count reset started' });
