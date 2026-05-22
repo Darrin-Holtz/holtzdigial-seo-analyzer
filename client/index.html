@@ -24,10 +24,10 @@
     <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
 
     <!-- Preconnect to critical origins -->
-    <!-- crossorigin required: AppContext fetches /api/auth/user with withCredentials:true
-         (CORS mode). Without crossorigin the browser opens a new connection for the CORS
-         request instead of reusing the pre-established one. -->
-    <link rel="preconnect" href="https://rankpilot-api.holtzdigital.com" crossorigin />
+    <!-- crossorigin="use-credentials" matches the credentials:include fetch pool used by
+         AppContext. The anonymous CORS pool (crossorigin / crossorigin="anonymous") is a
+         separate socket pool in Chrome and is NOT reused for credentialed CORS requests. -->
+    <link rel="preconnect" href="https://rankpilot-api.holtzdigital.com" crossorigin="use-credentials" />
 
     <!-- Self-hosted fonts: preload the two fonts used by the LCP element (H1).
          Outfit is the body font ("Analyze & Boost Your");
