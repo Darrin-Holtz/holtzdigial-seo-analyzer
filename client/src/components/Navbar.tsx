@@ -81,10 +81,10 @@ export default function Navbar() {
 
                     {/* Mobile toggle container */}
                     <div className="flex items-center gap-2 md:hidden">
-                        <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-full transition-colors">
+                        <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-full transition-colors" aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}>
                             {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
                         </button>
-                        <button className="text-muted-foreground hover:text-foreground p-2" onClick={() => setMobileOpen(!mobileOpen)}>
+                        <button className="text-muted-foreground hover:text-foreground p-2" onClick={() => setMobileOpen(!mobileOpen)} aria-label={mobileOpen ? "Close navigation menu" : "Open navigation menu"} aria-expanded={mobileOpen} aria-controls="mobile-menu">
                             {mobileOpen ? <X size={24} /> : <Menu size={24} />}
                         </button>
                     </div>
@@ -93,7 +93,7 @@ export default function Navbar() {
 
             {/* Mobile menu */}
             {mobileOpen && (
-                <div className="md:hidden border-b border-border bg-background origin-top">
+                <div id="mobile-menu" className="md:hidden border-b border-border bg-background origin-top">
                     <div className="px-4 py-3 space-y-1">
                         {user ? (
                             <>
