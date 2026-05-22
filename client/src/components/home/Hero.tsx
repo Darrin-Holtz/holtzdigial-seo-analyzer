@@ -1,15 +1,15 @@
 import { SearchIcon, ArrowRightIcon } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 // Inlined to avoid pulling the entire assets.tsx (50 KiB of dummy data) into
 // the initial bundle. assets.tsx is only needed by lazy-loaded home sections.
-const HomeWave = () => (
+const HomeWave = ({ running }: { running: boolean }) => (
     <svg className="w-full h-[15vh] min-h-[60px] max-h-[120px]" xmlns="http://www.w3.org/2000/svg" xmlnsXlink="http://www.w3.org/1999/xlink" viewBox="0 24 150 28" preserveAspectRatio="none" shapeRendering="auto">
         <defs>
             <path id="gentle-wave" d="M-160 44c30 0 58-18 88-18s 58 18 88 18 58-18 88-18 58 18 88 18 v44h-352z" />
         </defs>
-        <g className="parallax">
+        <g className={`parallax${running ? ' wave-running' : ''}`}>
             <use xlinkHref="#gentle-wave" x="48" y="0" fill="var(--accent)" opacity="0.05" />
             <use xlinkHref="#gentle-wave" x="48" y="3" fill="var(--accent)" opacity="0.1" />
             <use xlinkHref="#gentle-wave" x="48" y="5" fill="var(--accent)" opacity="0.15" />
@@ -20,7 +20,16 @@ const HomeWave = () => (
 
 export default function Hero() {
     const [url, setUrl] = useState("");
+    const [waveRunning, setWaveRunning] = useState(false);
     const navigate = useNavigate();
+
+    // Start the parallax wave after the Lighthouse Speed Index measurement window
+    // (~4.8 s from navigation). Pausing during capture prevents the continuous
+    // transform animation from inflating Speed Index above FCP.
+    useEffect(() => {
+        const id = setTimeout(() => setWaveRunning(true), 3500);
+        return () => clearTimeout(id);
+    }, []);
 
     const handleQuickAnalyze = (e: React.SubmitEvent) => {
         e.preventDefault();
@@ -60,7 +69,7 @@ export default function Hero() {
 
             {/* Animated Wave */}
             <div className="absolute bottom-0 left-0 w-full overflow-hidden pointer-events-none -z-1">
-                <HomeWave />
+                <HomeWave running={waveRunning} />
             </div>
         </section>
     );

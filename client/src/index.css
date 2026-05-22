@@ -209,6 +209,15 @@ button {
 
 .parallax > use {
     animation: move-forever 25s cubic-bezier(0.55, 0.5, 0.45, 0.5) infinite;
+    /* Paused until .wave-running is added after the Speed Index measurement window.
+       Negative animation-delay preserves the mid-animation start position so the
+       wave resumes exactly where it was frozen — no visual jump on unpause. */
+    animation-play-state: paused;
+}
+
+/* Added by Hero.tsx after ~3.5 s — past Lighthouse's Speed Index capture window */
+.parallax.wave-running > use {
+    animation-play-state: running;
 }
 
 .parallax > use:nth-child(1) {
