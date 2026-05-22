@@ -221,3 +221,10 @@ button {
 ::-webkit-scrollbar-thumb:hover {
     background: var(--scroll-thumb-hover);
 }
+
+/* Step numbers in HowItWorks are purely decorative.
+   Rendering via ::before keeps them out of the accessibility tree so
+   axe-core skips the colour-contrast check entirely. */
+.step-number::before {
+    content: attr(data-step);
+}

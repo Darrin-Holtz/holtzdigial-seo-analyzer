@@ -1,35 +1,10 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
-import type { Plugin } from "vite";
-
-// Inject a rel="preload" hint for the generated CSS bundle so the browser
-// discovers it earlier in the waterfall, reducing render-blocking time.
-function preloadCssPlugin(): Plugin {
-    let cssFileName = "";
-    return {
-        name: "preload-css",
-        generateBundle(_options, bundle) {
-            for (const file of Object.keys(bundle)) {
-                if (file.endsWith(".css")) {
-                    cssFileName = file;
-                    break;
-                }
-            }
-        },
-        transformIndexHtml(html) {
-            if (!cssFileName) return html;
-            return html.replace(
-                "</head>",
-                `  <link rel="preload" href="/${cssFileName}" as="style" />\n</head>`
-            );
-        },
-    };
-}
 
 // https://vite.dev/config/
 export default defineConfig({
-    plugins: [react(), tailwindcss(), preloadCssPlugin()],
+    plugins: [react(), tailwindcss()],
     server: {
         proxy: {
             '/api': {
