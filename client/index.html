@@ -28,12 +28,14 @@
          (CORS mode). Without crossorigin the browser opens a new connection for the CORS
          request instead of reusing the pre-established one. -->
     <link rel="preconnect" href="https://rankpilot-api.holtzdigital.com" crossorigin />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 
-    <!-- Non-blocking Google Fonts load -->
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Outfit:wght@100..900&display=swap" media="print" onload="this.media='all'" />
-    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Outfit:wght@100..900&display=swap" /></noscript>
+    <!-- Self-hosted fonts: preload the two fonts used by the LCP element (H1).
+         Outfit is the body font ("Analyze & Boost Your");
+         DM Serif Display is used for the "SEO Rankings" span.
+         Preloading both ensures they are available before React renders the H1,
+         preventing late font-swap re-measurements that inflate LCP. -->
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/fonts/outfit-variable-latin.woff2" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/fonts/dm-serif-display-regular-latin.woff2" />
 
     <!-- Open Graph -->
     <meta property="og:type" content="website" />

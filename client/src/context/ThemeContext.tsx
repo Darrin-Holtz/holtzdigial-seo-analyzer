@@ -33,8 +33,11 @@ export function ThemeProvider({ children, defaultTheme = "system", storageKey = 
 
     useEffect(() => {
         const root = window.document.documentElement;
+        // The inline script in index.html already applied the correct class
+        // before first paint. Skip the remove/add if the class is already right
+        // to avoid a forced style recalculation on every mount.
+        if (root.classList.contains(theme)) return;
         root.classList.remove("light", "dark");
-        // theme is always "dark" or "light" here — no setTheme() side-effect needed
         root.classList.add(theme);
     }, [theme]);
 
