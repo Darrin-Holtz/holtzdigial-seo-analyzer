@@ -228,3 +228,13 @@ button {
 .step-number::before {
     content: attr(data-step);
 }
+
+/* Subtle pulsing accent glow used on the Hero URL input bar */
+@keyframes pulse-glow {
+    0%, 100% { box-shadow: 0 0 0 0 transparent; }
+    50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent); }
+}
+
+@utility animate-pulse-glow {
+    animation: pulse-glow 3s ease-in-out infinite;
+}

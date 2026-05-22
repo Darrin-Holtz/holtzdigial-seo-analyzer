@@ -4,11 +4,14 @@ import Navbar from "./components/Navbar";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Home from "./pages/Home";
 import Loading from "./components/Loading";
-import { Toaster } from "react-hot-toast";
 import { useApp } from "./context/AppContext";
 
 // Lazy-load all non-home routes to reduce initial bundle size
 const Login = lazy(() => import("./pages/Login"));
+// Lazy-load Toaster so react-hot-toast is excluded from the initial JS bundle.
+// By the time any page that triggers a toast (e.g. Login) loads, Toaster will
+// have already been fetched and mounted.
+const Toaster = lazy(() => import("react-hot-toast").then((m) => ({ default: m.Toaster })));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Analyze = lazy(() => import("./pages/Analyze"));
 const Report = lazy(() => import("./pages/Report"));
@@ -24,7 +27,9 @@ export default function App() {
 
     return (
         <>
-            <Toaster />
+            <Suspense fallback={null}>
+                <Toaster />
+            </Suspense>
             {!hideNavbar && <Navbar />}
             <Suspense fallback={<Loading />}>
                 <Routes>

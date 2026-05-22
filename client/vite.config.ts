@@ -64,6 +64,17 @@ export default defineConfig({
                     // chunk so it only loads when /rank/:id is visited
                 },
             },
+            // Instruct Rollup that app source files (not node_modules CSS) are
+            // side-effect-free so it can tree-shake unused exports from modules
+            // that are imported by both eager and lazy consumers (e.g. assets.tsx).
+            treeshake: {
+                moduleSideEffects: (id, external) => {
+                    if (external) return false;
+                    // Keep CSS imports as side-effectful (they register global styles)
+                    if (id.endsWith('.css')) return true;
+                    return false;
+                },
+            },
         },
     },
 });
