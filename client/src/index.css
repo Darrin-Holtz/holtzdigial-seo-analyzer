@@ -229,12 +229,29 @@ button {
     content: attr(data-step);
 }
 
-/* Subtle pulsing accent glow used on the Hero URL input bar */
+/* Subtle pulsing accent glow on the Hero URL input bar.
+   box-shadow is ONLY on the ::after pseudo-element (painted once, never animated).
+   Only `opacity` is animated — a GPU-composited property — so this avoids
+   the "non-composited animation" Lighthouse warning that animating box-shadow
+   directly would trigger. */
 @keyframes pulse-glow {
-    0%, 100% { box-shadow: 0 0 0 0 transparent; }
-    50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent); }
+    0%, 100% { opacity: 0; }
+    50% { opacity: 1; }
 }
 
 @utility animate-pulse-glow {
+    position: relative;
+    isolation: isolate;
+}
+
+.animate-pulse-glow::after {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent);
+    opacity: 0;
     animation: pulse-glow 3s ease-in-out infinite;
+    pointer-events: none;
+    z-index: -1;
 }

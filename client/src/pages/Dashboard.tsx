@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { SearchIcon, ArrowRightIcon, BarChart3Icon, GlobeIcon, TrendingUpIcon } from "lucide-react";
 import AnalysesCard from "../components/AnalysesCard";
 import { useApp } from "../context/AppContext";
+import { api } from "../lib/api";
 
 interface AnalysisSummary {
     _id: string;
@@ -19,7 +20,7 @@ interface AnalysisSummary {
 }
 
 export default function Dashboard() {
-    const { user, api } = useApp();
+    const { user } = useApp();
     const navigate = useNavigate();
     const [url, setUrl] = useState("");
     const [analyses, setAnalyses] = useState<AnalysisSummary[]>([]);

@@ -1,10 +1,14 @@
 import { lazy, Suspense } from "react";
 import { Routes, Route, useLocation, Navigate } from "react-router-dom";
-import Navbar from "./components/Navbar";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Home from "./pages/Home";
 import Loading from "./components/Loading";
 import { useApp } from "./context/AppContext";
+
+// Lazy-load Navbar so React's first commit (which paints the Hero H1 = LCP)
+// does not have to process the Navbar component tree first. Navbar is
+// position:fixed so deferring it causes zero layout shift (CLS stays 0).
+const Navbar = lazy(() => import("./components/Navbar"));
 
 // Lazy-load all non-home routes to reduce initial bundle size
 const Login = lazy(() => import("./pages/Login"));
@@ -30,7 +34,16 @@ export default function App() {
             <Suspense fallback={null}>
                 <Toaster />
             </Suspense>
-            {!hideNavbar && <Navbar />}
+            {/* Fallback is a minimal fixed bar that matches Navbar's visual footprint
+                (height 64px, same blur/background) so there is no layout shift when
+                the real Navbar mounts on the next render pass. */}
+            {!hideNavbar && (
+                <Suspense fallback={
+                    <nav aria-hidden className="fixed top-0 w-full h-16 z-50 bg-background/70 backdrop-blur-lg" />
+                }>
+                    <Navbar />
+                </Suspense>
+            )}
             <Suspense fallback={<Loading />}>
                 <Routes>
                     <Route path="/" element={<Home />} />

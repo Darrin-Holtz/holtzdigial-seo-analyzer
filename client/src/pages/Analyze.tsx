@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { SearchIcon, GlobeIcon, FileSearchIcon, BrainIcon, CheckCircleIcon, AlertCircle, Loader2, ArrowRightIcon } from "lucide-react";
-import { useApp } from "../context/AppContext";
+import { api } from "../lib/api";
 
 const STEPS = [
     { icon: <GlobeIcon size={22} />, label: "Connecting to browser", desc: "Creating cloud browser session..." },
@@ -13,7 +13,6 @@ const STEPS = [
 ];
 
 export default function Analyze() {
-    const {api} = useApp();
     const [url, setUrl] = useState("");
     const [analyzing, setAnalyzing] = useState(false);
 

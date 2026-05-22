@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Clock, Trash2, ExternalLink, Search, AlertCircle, Loader2, Filter, ArrowUpDown } from "lucide-react";
 import ScoreGauge from "../components/ScoreGauge";
-import { useApp } from "../context/AppContext";
+import { api } from "../lib/api";
 
 interface AnalysisItem {
     _id: string;
@@ -19,7 +19,6 @@ interface AnalysisItem {
 }
 
 export default function History() {
-    const {api} = useApp();
     const [analyses, setAnalyses] = useState<AnalysisItem[]>([]);
 
     useEffect(() => { document.title = "Analysis History — Rank Pilot"; }, []);

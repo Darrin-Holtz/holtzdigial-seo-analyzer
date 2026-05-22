@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { ArrowLeft, Target, Globe, Clock, TrendingUp, TrendingDown, Minus, RefreshCw, AlertCircle, ExternalLink, Trophy, Users, Calendar, Loader2 } from "lucide-react";
-import { useApp } from "../context/AppContext";
+import { api } from "../lib/api";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 interface RankHistoryEntry {
@@ -39,7 +39,6 @@ interface TrackingData {
 }
 
 export default function RankDetail() {
-    const { api } = useApp();
     const { id } = useParams();
     const [tracking, setTracking] = useState<TrackingData | null>(null);
     const [loading, setLoading] = useState(true);

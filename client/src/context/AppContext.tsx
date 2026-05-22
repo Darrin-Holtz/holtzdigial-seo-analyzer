@@ -1,6 +1,8 @@
-import type { AxiosInstance } from "axios";
-import axios from "axios";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+
+// Axios is NOT imported here — auth calls use the native Fetch API so that
+// axios stays out of the initial JS bundle (it lives in src/lib/api.ts and is
+// only pulled in by lazy-loaded pages that need it for authenticated requests).
 
 interface User {
     id: string;
@@ -13,21 +15,16 @@ interface User {
 interface AppContextType {
     user: User | null;
     loading: boolean;
-    api: AxiosInstance;
+    // `api` is intentionally absent — consumers import { api } from '../lib/api'
     login: (email: string, password: string) => Promise<{success: boolean; message?: string}>;
     register: (name: string, email: string, password: string) => Promise<{success: boolean; message?: string}>;
     logout: () => void;
+    loadUser: () => Promise<void>;
 }
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "";
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
-
-// Single shared axios instance — credentials (httpOnly cookie) sent automatically
-const api = axios.create({
-    baseURL: BACKEND_URL,
-    withCredentials: true,
-});
 
 export function AppProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
@@ -35,12 +32,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const loadUser = async () => {
         try {
-            const { data } = await api.get("/api/auth/user");
-            if (data.success) {
-                setUser(data.user);
-            } else {
-                setUser(null);
-            }
+            const res = await fetch(`${BACKEND_URL}/api/auth/user`, { credentials: "include" });
+            const data = await res.json();
+            setUser(data.success ? data.user : null);
         } catch {
             setUser(null);
         } finally {
@@ -54,38 +48,53 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const login = async (email: string, password: string) => {
         try {
-            const res = await api.post("/api/auth/login", { email, password });
-            if (res.data.success) {
-                setUser(res.data.user);
+            const res = await fetch(`${BACKEND_URL}/api/auth/login`, {
+                method: "POST",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email, password }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                setUser(data.user);
                 return { success: true };
             }
-            return { success: false, message: res.data.message || "Login failed" };
-        } catch (error: any) {
-            return { success: false, message: error.response?.data?.message || "An error occurred" };
+            return { success: false, message: data.message || "Login failed" };
+        } catch {
+            return { success: false, message: "An error occurred" };
         }
     };
 
     const register = async (name: string, email: string, password: string) => {
         try {
-            const res = await api.post("/api/auth/register", { name, email, password });
-            if (res.data.success) {
-                setUser(res.data.user);
+            const res = await fetch(`${BACKEND_URL}/api/auth/register`, {
+                method: "POST",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name, email, password }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                setUser(data.user);
                 return { success: true };
             }
-            return { success: false, message: res.data.message || "Registration failed" };
-        } catch (error: any) {
-            return { success: false, message: error.response?.data?.message || "An error occurred" };
+            return { success: false, message: data.message || "Registration failed" };
+        } catch {
+            return { success: false, message: "An error occurred" };
         }
     };
 
     const logout = async () => {
         try {
-            await api.post("/api/auth/logout");
+            await fetch(`${BACKEND_URL}/api/auth/logout`, {
+                method: "POST",
+                credentials: "include",
+            });
         } catch { /* ignore network errors on logout */ }
         setUser(null);
     };
 
-    const value = { user, loading, api, login, register, logout, loadUser };
+    const value = { user, loading, login, register, logout, loadUser };
 
     return (
         <AppContext.Provider value={value}>

@@ -3,7 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import ScoreGauge from "../components/ScoreGauge";
 import IssueCard from "../components/IssueCard";
 import { ArrowLeft, Globe, Clock, FileText, Image, Link2, Heading, Tag, AlertCircle, ExternalLink, Type, Search, Download, Smartphone, Zap, Code } from "lucide-react";
-import { useApp } from "../context/AppContext";
+import { api } from "../lib/api";
 
 interface AnalysisData {
     _id: string;
@@ -61,7 +61,6 @@ interface AnalysisData {
 }
 
 export default function Report() {
-    const {api} = useApp();
     const { id } = useParams();
     const [analysis, setAnalysis] = useState<AnalysisData | null>(null);
     const [prevAnalysis, setPrevAnalysis] = useState<AnalysisData | null>(null);

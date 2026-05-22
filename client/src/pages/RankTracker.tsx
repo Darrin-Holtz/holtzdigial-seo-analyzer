@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Target, Plus, RefreshCw, Trash2, TrendingUp, TrendingDown, Minus, ExternalLink, Clock, Loader2, X, Search, Globe, AlertCircle, Eye, EyeOff, Filter, ArrowUpDown } from "lucide-react";
-import { useApp } from "../context/AppContext";
+import { api } from "../lib/api";
 
 interface KeywordItem {
     _id: string;
@@ -20,7 +20,6 @@ interface KeywordItem {
 }
 
 export default function RankTracker() {
-    const { api } = useApp();
     const [keywords, setKeywords] = useState<KeywordItem[]>([]);
 
     useEffect(() => { document.title = "Rank Tracker — Rank Pilot"; }, []);
