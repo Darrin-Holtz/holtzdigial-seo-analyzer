@@ -16,7 +16,10 @@
     <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
 
     <!-- Preconnect to critical origins -->
-    <link rel="preconnect" href="https://rankpilot-api.holtzdigital.com" />
+    <!-- crossorigin required: AppContext fetches /api/auth/user with withCredentials:true
+         (CORS mode). Without crossorigin the browser opens a new connection for the CORS
+         request instead of reusing the pre-established one. -->
+    <link rel="preconnect" href="https://rankpilot-api.holtzdigital.com" crossorigin />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 
