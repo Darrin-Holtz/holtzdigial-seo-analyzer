@@ -4,6 +4,14 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- Apply theme class synchronously before first paint to prevent FOUC and
+         the forced-reflow caused by ThemeContext resolving 'system' asynchronously.
+         Must run before any <style> or <link rel="stylesheet"> in the document. -->
+    <script>
+      (function(){var s=localStorage.getItem('rankpilot-theme')||'system';document.documentElement.classList.add(s==='system'?(window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):s);})();
+    </script>
+
     <title>Rank Pilot — AI SEO Analyzer</title>
 
     <!-- Primary Meta -->

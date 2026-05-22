@@ -19,25 +19,34 @@ const initialState: ThemeProviderState = { theme: "system", setTheme: () => null
 const ThemeProviderContext = createContext<ThemeProviderState>(initialState);
 
 export function ThemeProvider({ children, defaultTheme = "system", storageKey = "rankpilot-theme", ...props }: ThemeProviderProps) {
-    const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem(storageKey) as Theme) || defaultTheme);
+    // Resolve "system" immediately so the effect never has to call setTheme()
+    // on mount — that second-render cycle causes a forced CSSOM recalculation
+    // (classList.remove + classList.add on <html>) that shows up as 1.5s of
+    // Style & Layout work and a 53ms forced reflow in Lighthouse.
+    const [theme, setTheme] = useState<Theme>(() => {
+        const stored = (localStorage.getItem(storageKey) as Theme) || defaultTheme;
+        if (stored === "system") {
+            return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        }
+        return stored;
+    });
 
     useEffect(() => {
         const root = window.document.documentElement;
         root.classList.remove("light", "dark");
-        if (theme === "system") {
-            const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-            root.classList.add(systemTheme);
-            (() => setTheme(systemTheme))();
-            return;
-        }
+        // theme is always "dark" or "light" here — no setTheme() side-effect needed
         root.classList.add(theme);
     }, [theme]);
 
     const value = {
         theme,
-        setTheme: (theme: Theme) => {
-            localStorage.setItem(storageKey, theme);
-            setTheme(theme);
+        setTheme: (newTheme: Theme) => {
+            const resolved: Theme =
+                newTheme === "system"
+                    ? window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
+                    : newTheme;
+            localStorage.setItem(storageKey, resolved);
+            setTheme(resolved);
         },
     };
 
