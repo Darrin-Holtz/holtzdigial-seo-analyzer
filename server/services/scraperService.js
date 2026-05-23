@@ -64,10 +64,162 @@ async function fetchRobotsTxt(origin) {
     }
 }
 
+// ── HTTP fallback scraper ────────────────────────────────────────────────────
+// Used automatically when Browserbase is unavailable (quota exhausted, etc.).
+// Fetches raw HTML with fetch(); CWV metrics and detailed mobile layout checks
+// are unavailable without a real browser — those fields return null / basic.
+async function httpFallbackScrape(url) {
+    const startTime = Date.now();
+
+    const res = await fetch(url, {
+        headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+        },
+        signal: AbortSignal.timeout(15000),
+        redirect: 'follow',
+    });
+
+    const html = await res.text();
+    const loadTime = Date.now() - startTime;
+    const statusCode = res.status;
+
+    const getMeta = (name) => {
+        const patterns = [
+            new RegExp(`<meta[^>]+(?:name|property)=["']${name}["'][^>]+content=["']([^"']*)["']`, 'i'),
+            new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]+(?:name|property)=["']${name}["']`, 'i'),
+        ];
+        for (const p of patterns) { const m = html.match(p); if (m) return m[1]; }
+        return '';
+    };
+
+    const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
+    const title = titleMatch ? titleMatch[1].trim() : '';
+    const description = getMeta('description');
+    const robots = getMeta('robots');
+    const ogTitle = getMeta('og:title');
+    const ogDescription = getMeta('og:description');
+    const ogImage = getMeta('og:image');
+    const twitterCard = getMeta('twitter:card');
+    const viewport = getMeta('viewport');
+
+    const canonicalMatch = html.match(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']*)["']/i)
+        || html.match(/<link[^>]+href=["']([^"']*)["'][^>]+rel=["']canonical["']/i);
+    const canonical = canonicalMatch ? canonicalMatch[1] : '';
+
+    const charsetMatch = html.match(/<meta[^>]+charset=["']?([^"'\s/>]+)/i);
+    const charset = charsetMatch ? charsetMatch[1] : '';
+
+    // Headings
+    const countTag = (tag) => (html.match(new RegExp(`<${tag}[\\s>]`, 'gi')) || []).length;
+    const h1Matches = [...html.matchAll(/<h1[^>]*>([\s\S]*?)<\/h1>/gi)];
+    const h1Texts = h1Matches.map((m) => m[1].replace(/<[^>]+>/g, '').trim()).filter(Boolean);
+    const headings = {
+        h1: countTag('h1'), h2: countTag('h2'), h3: countTag('h3'),
+        h4: countTag('h4'), h5: countTag('h5'), h6: countTag('h6'),
+        h1Texts,
+    };
+
+    // Links
+    const baseHost = new URL(url).hostname;
+    let internalLinks = 0, externalLinks = 0;
+    const internalHrefs = [];
+    for (const m of html.matchAll(/href=["']([^"'#][^"']*?)["']/gi)) {
+        const href = m[1];
+        if (/^(mailto:|tel:|javascript:)/i.test(href)) continue;
+        try {
+            const u = new URL(href, url);
+            if (u.hostname === baseHost) { internalLinks++; internalHrefs.push(u.href); }
+            else externalLinks++;
+        } catch {}
+    }
+
+    // Images
+    const imgMatches = [...html.matchAll(/<img([^>]*)>/gi)];
+    const totalImages = imgMatches.length;
+    const missingAlt = imgMatches.filter((m) => !/alt=["'][^"']+["']/.test(m[1])).length;
+
+    // Word count — strip scripts, styles, then tags
+    const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+    const rawBody = (bodyMatch ? bodyMatch[1] : html)
+        .replace(/<script[\s\S]*?<\/script>/gi, '')
+        .replace(/<style[\s\S]*?<\/style>/gi, '')
+        .replace(/<[^>]+>/g, ' ');
+    const bodyText = rawBody.replace(/\s+/g, ' ').trim();
+    const wordCount = bodyText.split(/\s+/).filter((w) => w.length > 0).length;
+
+    // Structured data (JSON-LD)
+    const structuredData = [];
+    for (const m of html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+        try {
+            const parsed = JSON.parse(m[1]);
+            if (parsed['@graph'] && Array.isArray(parsed['@graph'])) {
+                structuredData.push(...parsed['@graph'].map((item) => ({ '@context': parsed['@context'] || 'https://schema.org', ...item })));
+            } else {
+                structuredData.push(parsed);
+            }
+        } catch {}
+    }
+
+    // Sitemap link tag
+    const sitemapLinkMatch = html.match(/<link[^>]+rel=["']sitemap["'][^>]+href=["']([^"']*)["']/i)
+        || html.match(/<link[^>]+href=["']([^"']*)["'][^>]+rel=["']sitemap["']/i);
+    const sitemapLinkTag = sitemapLinkMatch ? sitemapLinkMatch[1] : null;
+
+    const scrapedData = {
+        metaData: { title, description, canonical, robots, ogTitle, ogDescription, ogImage, twitterCard, viewport, charset },
+        headings,
+        links: { internal: internalLinks, external: externalLinks, total: internalLinks + externalLinks, internalHrefs: internalHrefs.slice(0, 20) },
+        images: { total: totalImages, withAlt: totalImages - missingAlt, missingAlt },
+        wordCount,
+        pageSize: html.length,
+        structuredData,
+        sitemapLinkTag,
+        currentOrigin: new URL(url).origin,
+        bodyText: bodyText.substring(0, 3000),
+    };
+
+    // Basic mobile friendliness from viewport meta only (no layout data without real browser)
+    const mobileFriendliness = {
+        isMobileFriendly: !!viewport,
+        issues: viewport ? [] : ['Missing viewport meta tag'],
+    };
+
+    const origin = new URL(url).origin;
+    const [robotsData, brokenLinksCount] = await Promise.all([
+        fetchRobotsTxt(origin),
+        checkBrokenLinks(scrapedData.links.internalHrefs || []),
+    ]);
+
+    const { internalHrefs: _dropped, ...links } = scrapedData.links;
+
+    return {
+        success: true,
+        scrapedViaFallback: true,
+        data: {
+            ...scrapedData,
+            links: { ...links, broken: brokenLinksCount },
+            robotsTxt: robotsData,
+            coreWebVitals: { fcp: null, lcp: null, cls: null, ttfb: null },
+            mobileFriendliness,
+            loadTime,
+            statusCode,
+            url,
+        },
+    };
+}
+
 export async function scrapeUrl(url) {
     let browser;
     try {
-        const session = await bb.sessions.create({browserSettings: {blockads: true}});
+        if (!process.env.BROWSERBASE_API_KEY) throw new Error('BROWSERBASE_API_KEY is not set');
+        if (!process.env.BROWSERBASE_PROJECT_ID) throw new Error('BROWSERBASE_PROJECT_ID is not set');
+
+        const session = await bb.sessions.create({
+            projectId: process.env.BROWSERBASE_PROJECT_ID,
+            browserSettings: { blockAds: true },
+        });
         browser = await chromium.connectOverCDP(session.connectUrl);
         const defaultContext = browser.contexts()[0];
         const page = defaultContext.pages()[0];
@@ -315,14 +467,16 @@ export async function scrapeUrl(url) {
             },
         };
     } catch (error) {
-        console.error("[SCRAPER] Playwright session failed:", error.message);
-        if(browser) {
-            try {
-                await browser.close();
-            } catch (closeError) {
-                console.error("[SCRAPER] Failed to close browser:", closeError.message);
-            }
+        console.error('[SCRAPER] Browserbase/Playwright failed:', error.message);
+        if (browser) {
+            await browser.close().catch((e) => console.error('[SCRAPER] Failed to close browser:', e.message));
         }
-        return { success: false, error: error.message };
+        console.warn('[SCRAPER] Falling back to HTTP scraper for:', url);
+        try {
+            return await httpFallbackScrape(url);
+        } catch (fallbackError) {
+            console.error('[SCRAPER] HTTP fallback also failed:', fallbackError.message);
+            return { success: false, error: fallbackError.message };
+        }
     }
 }

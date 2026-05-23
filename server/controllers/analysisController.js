@@ -76,6 +76,7 @@ export const analyzeUrl = async (req, res) => {
         const scrapeResult = await scrapeUrl(validUrl.href);
 
         if (!scrapeResult || !scrapeResult.success) {
+            console.error('[ANALYZE] Scrape failed for', validUrl.href, '—', scrapeResult?.error || 'unknown error');
             analysis.status = 'failed';
             await analysis.save();
             return res.status(422).json({ success: false, message: 'Failed to access the website. It may be blocking our crawler.' });
