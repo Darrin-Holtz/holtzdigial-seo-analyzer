@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { SearchIcon, GlobeIcon, FileSearchIcon, BrainIcon, CheckCircleIcon, AlertCircle, Loader2, ArrowRightIcon } from "lucide-react";
 import { api } from "../lib/api";
+import { useApp } from "../context/AppContext";
 
 const STEPS = [
     { icon: <GlobeIcon size={22} />, label: "Connecting to browser", desc: "Creating cloud browser session..." },
@@ -15,6 +16,7 @@ const STEPS = [
 export default function Analyze() {
     const [url, setUrl] = useState("");
     const [analyzing, setAnalyzing] = useState(false);
+    const { loadUser } = useApp();
 
     useEffect(() => { document.title = "Analyze Website — Rank Pilot"; }, []);
     const [currentStep, setCurrentStep] = useState(0);
@@ -46,6 +48,7 @@ export default function Analyze() {
             setCurrentStep(2);
             await new Promise(r => setTimeout(r, 400));
             setCurrentStep(3);
+            await loadUser();
             setTimeout(() => navigate(`/report/${id}`), 1000);
         } catch (err: any) {
             setError(err.response?.data?.message || err.message || "Failed to start analysis. Please check the URL and try again.");

@@ -78,6 +78,16 @@ export const getCurrentUser = async (req, res) => {
     const user = await User.findById(req.userId).select('-password');
     if(!user) return res.status(404).json({success: false, message: 'User not found'});
 
+    // Reset daily analysis count if the last analysis was on a previous calendar day
+    if (user.plan !== 'pro' && user.analysisCount > 0) {
+      const today = new Date().toDateString();
+      const lastDate = user.lastAnalysisDate ? new Date(user.lastAnalysisDate).toDateString() : null;
+      if (lastDate !== today) {
+        user.analysisCount = 0;
+        await user.save();
+      }
+    }
+
     res.status(200).json({success: true, user});
   } catch (error) {
     console.error('Error fetching current user:', error.message);

@@ -20,7 +20,7 @@ interface AnalysisSummary {
 }
 
 export default function Dashboard() {
-    const { user } = useApp();
+    const { user, loadUser } = useApp();
     const navigate = useNavigate();
     const [url, setUrl] = useState("");
     const [analyses, setAnalyses] = useState<AnalysisSummary[]>([]);
@@ -57,7 +57,7 @@ export default function Dashboard() {
     };
 
     useEffect(() => {
-        (async () => await fetchRecent())();
+        (async () => { await Promise.all([fetchRecent(), loadUser()]); })();
     }, []);
 
     return (
