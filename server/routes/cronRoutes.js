@@ -4,6 +4,7 @@ import User from '../models/User.js';
 import { keywordTracking } from '../services/keywordTrackingService.js';
 
 const cronRouter = express.Router();
+let cronRunning = false;
 
 // Verify request comes from Vercel Cron (or any caller that knows CRON_SECRET)
 function verifyCronSecret(req, res) {
@@ -23,14 +24,20 @@ function verifyCronSecret(req, res) {
 // GET /api/cron/rank-tracking
 // Called daily by Vercel Crons. Vercel Cron Jobs ONLY send GET requests —
 // defining this as POST silently fails (404), so it must stay GET.
-// Handles rank tracking AND analysis count reset so both fit within the
-// single cron job allowed on Vercel's free tier.
+// Runs bounded work before responding because serverless functions may stop
+// execution immediately after the response is sent.
 cronRouter.get('/rank-tracking', async (req, res) => {
     if (!verifyCronSecret(req, res)) return;
 
-    res.json({ success: true, message: 'Rank tracking and analysis count reset started' });
+    if (cronRunning) {
+        return res.status(409).json({ success: false, message: 'Cron job already running' });
+    }
 
-    // Continue processing after response is sent
+    cronRunning = true;
+
+    const maxTrackings = Number(process.env.CRON_MAX_TRACKINGS || 3);
+    const startedAt = Date.now();
+
     try {
         // 1. Reset free-plan analysis counts for users whose last analysis was before today
         const today = new Date();
@@ -43,19 +50,40 @@ cronRouter.get('/rank-tracking', async (req, res) => {
 
         // 2. Run keyword rank tracking
         console.log('[CRON] Starting daily rank tracking...');
-        const activeTrackings = await KeywordTracking.find({ active: true });
+        const activeTrackings = await KeywordTracking.find({ active: true }).sort({ lastChecked: 1 }).limit(maxTrackings);
+        let successCount = 0;
+        let failureCount = 0;
 
         for (const tracking of activeTrackings) {
             tracking.status = 'checking';
             await tracking.save();
             const result = await keywordTracking(tracking);
             if (!result?.success) {
+                failureCount += 1;
                 console.error(`[CRON] Failed to track keyword "${tracking.keyword}":`, result?.error);
+            } else {
+                successCount += 1;
             }
         }
-        console.log('[CRON] Daily rank tracking complete.');
+
+        const durationMs = Date.now() - startedAt;
+        console.log(`[CRON] Daily rank tracking complete in ${durationMs}ms. Processed=${activeTrackings.length}, success=${successCount}, failed=${failureCount}`);
+
+        return res.json({
+            success: true,
+            message: 'Rank tracking and analysis count reset completed',
+            processed: activeTrackings.length,
+            successful: successCount,
+            failed: failureCount,
+            resetUsers: resetResult.modifiedCount,
+            durationMs,
+            maxTrackings,
+        });
     } catch (error) {
         console.error('[CRON] Rank tracking error:', error.message);
+        return res.status(500).json({ success: false, message: 'Cron job failed', error: error.message });
+    } finally {
+        cronRunning = false;
     }
 });
 
@@ -64,8 +92,6 @@ cronRouter.get('/rank-tracking', async (req, res) => {
 // Cron Jobs only send GET requests, so this must stay GET.
 cronRouter.get('/reset-analysis-counts', async (req, res) => {
     if (!verifyCronSecret(req, res)) return;
-
-    res.json({ success: true, message: 'Analysis count reset started' });
 
     try {
         const today = new Date();
@@ -76,8 +102,10 @@ cronRouter.get('/reset-analysis-counts', async (req, res) => {
             { $set: { analysisCount: 0 } }
         );
         console.log(`[CRON] Reset analysis counts for ${result.modifiedCount} user(s).`);
+        return res.json({ success: true, message: 'Analysis count reset completed', resetUsers: result.modifiedCount });
     } catch (error) {
         console.error('[CRON] Reset analysis counts error:', error.message);
+        return res.status(500).json({ success: false, message: 'Reset failed', error: error.message });
     }
 });
 
